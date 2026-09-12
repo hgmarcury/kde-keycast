@@ -1,0 +1,45 @@
+# ============================================================
+# Build
+# ============================================================
+
+/build/
+/build-asan/
+
+# ============================================================
+# Temporary/editor files
+# ============================================================
+
+*~
+*.swp
+*.swo
+
+# ============================================================
+# Historical backups / snapshots
+# ============================================================
+
+# Backup extensions
+*.bak
+*.backup
+*.backup-*
+*.old
+*.orig
+
+# Files containing backup/history markers
+*before-*
+*backup*
+*working*
+*stable*
+*broken*
+*snapshot*
+*pre-*
+*shift-fix*
+
+# Numbered historical copies
+*.cpp.[0-9]*
+*.txt.[0-9]*
+
+# Explicit historical variants
+main-v*.cpp
+main-before-*.cpp
+main.cpp.*
+CMakeLists.txt.*
