@@ -389,6 +389,7 @@ protected:
                         {"SysRq", "SysRq"},
 
                         {"Pause", "Ⅱ"},
+        {"Pause Break", "Ⅱ"},
 
                         {"Scroll Lock", "ScrLk"},
                         {"ScrLk", "ScrLk"},
@@ -2103,6 +2104,22 @@ private:
     {
         QStringList result;
 
+        /*
+         * En modo compacto las teclas especiales ya utilizan
+         * su símbolo como leyenda principal.
+         *
+         * No debemos intentar obtener niveles XKB adicionales
+         * para ellas porque teclas como Pause pueden devolver
+         * nombres internos como Pause / Break / Sys_Req.
+         */
+        if (compactMode &&
+            (primary == QStringLiteral("Ⅱ") ||
+             primary == QStringLiteral("⎙") ||
+             primary == QStringLiteral("⇥"))) {
+
+            return result;
+        }
+
         if (!xkbState ||
             !xkbKeymap ||
             linuxCode < 0) {
@@ -2126,24 +2143,41 @@ private:
          * queremos representar únicamente la serigrafía física de
          * la tecla, no nombres internos como Sys_Req, Break, etc.
          */
+        /*
+         * Estas teclas tienen símbolos físicos conocidos.
+         *
+         * En modo compacto el símbolo ya es la leyenda principal,
+         * por lo que NO debemos devolverlo también como leyenda
+         * secundaria.
+         *
+         * En modo normal sí se conserva como serigrafía.
+         */
         if (primary == QStringLiteral("PrtSc") ||
             primary == QStringLiteral("Print")) {
 
-            result.append(QStringLiteral("⎙"));
+            if (!compactMode)
+                result.append(QStringLiteral("⎙"));
+
             return result;
         }
 
         if (primary == QStringLiteral("Pause")) {
-            result.append(QStringLiteral("Ⅱ"));
+
+            if (!compactMode)
+                result.append(QStringLiteral("Ⅱ"));
+
             return result;
         }
 
         /*
-         * Tab tiene keysyms auxiliares ISO_* en algunos keymaps.
+         * Tab puede tener keysyms auxiliares ISO_* en algunos keymaps.
          * No son serigrafía física de la tecla.
          */
         if (primary == QStringLiteral("Tab")) {
-            result.append(QStringLiteral("⇥"));
+
+            if (!compactMode)
+                result.append(QStringLiteral("⇥"));
+
             return result;
         }
 
