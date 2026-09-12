@@ -2057,7 +2057,7 @@ private:
                 isModifier(keyName);
                 
                 if (pressed &&
-                    keyName == QStringLiteral("KEY_C") &&
+                    keyName == QStringLiteral("KEY_M") &&
                     pressedModifiers.contains(
                         QStringLiteral("KEY_LEFTCTRL")
                     ) &&
@@ -2066,7 +2066,7 @@ private:
                     )) {
 
                     toggleCompactMode();
-                    continue;
+            
                 }
 
 
