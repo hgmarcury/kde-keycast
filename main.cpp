@@ -16,6 +16,8 @@
 #include <QWindow>
 #include <QScreen>
 #include <QSocketNotifier>
+#include <QSettings>
+#include <QMoveEvent>
 
 #include <wayland-client.h>
 
@@ -33,6 +35,10 @@ struct VisualEntry {
     qint64 expires = 0;
     bool combination = false;
     int repeatCount = 1;
+
+    // Código Linux de la tecla física cuando la entrada representa
+    // una única tecla. Las combinaciones utilizan -1.
+    int linuxKeyCode = -1;
 };
 
 
@@ -53,8 +59,31 @@ public:
         );
 
         setWindowTitle(QStringLiteral("KDE KeyCast"));
-        resize(400, 106);
-        setFixedSize(400, 106);
+
+        QSettings settings(
+            QStringLiteral("KDE"),
+            QStringLiteral("KDEKeyCast")
+        );
+
+        compactMode =
+            settings.value(
+                QStringLiteral("compactMode"),
+                false
+            ).toBool();
+
+        alwaysOnTop =
+            settings.value(
+                QStringLiteral("alwaysOnTop"),
+                true
+            ).toBool();
+
+        const int initialWidth =
+            compactMode ? 300 : 400;
+
+        setFixedSize(
+            initialWidth,
+            106
+        );
 
 
         if (auto *screen = QGuiApplication::primaryScreen()) {
@@ -66,7 +95,21 @@ public:
             );
         }
 
+        const QVariant savedX =
+            settings.value(QStringLiteral("windowX"));
+
+        const QVariant savedY =
+            settings.value(QStringLiteral("windowY"));
+
+        if (savedX.isValid() && savedY.isValid()) {
+            move(
+                savedX.toInt(),
+                savedY.toInt()
+            );
+        }
+
         setupWaylandKeyboard();
+
 
         process.setProgram(
             QStringLiteral("/usr/bin/showmethekey-cli")
@@ -108,49 +151,6 @@ public:
             this,
             [this] {
 
-                /*
-                 * Detectamos dónde está realmente la ventana.
-                 * Esto permite actualizar el lado de expansión
-                 * después de que el usuario la haya arrastrado.
-                 */
-                if (!lastWindowGeometry.isNull() &&
-                    geometry() != lastWindowGeometry) {
-
-                    lastWindowGeometry = geometry();
-
-                    const QRect screenArea =
-                        QGuiApplication::primaryScreen()
-                            ? QGuiApplication::primaryScreen()
-                                ->availableGeometry()
-                            : QRect();
-
-                    if (!screenArea.isNull()) {
-
-                        const int screenCenter =
-                            screenArea.left() +
-                            screenArea.width() / 2;
-
-                        const int windowCenter =
-                            geometry().left() +
-                            geometry().width() / 2;
-
-                        if (windowCenter <
-                            screenCenter - screenArea.width() / 20) {
-
-                            expansionSide = -1;
-
-                        } else if (windowCenter >
-                                   screenCenter + screenArea.width() / 20) {
-
-                            expansionSide = 1;
-
-                        } else {
-
-                            expansionSide = 0;
-                        }
-                    }
-                }
-
                 trimVisualQueue();
                 update();
             }
@@ -163,6 +163,31 @@ public:
 
     ~KeyCast()
     {
+        QSettings settings(
+            QStringLiteral("KDE"),
+            QStringLiteral("KDEKeyCast")
+        );
+
+        settings.setValue(
+            QStringLiteral("windowX"),
+            x()
+        );
+
+        settings.setValue(
+            QStringLiteral("windowY"),
+            y()
+        );
+
+        settings.setValue(
+            QStringLiteral("compactMode"),
+            compactMode
+        );
+
+        settings.setValue(
+            QStringLiteral("alwaysOnTop"),
+            alwaysOnTop
+        );
+
         if (waylandNotifier)
             delete waylandNotifier;
 
@@ -193,33 +218,6 @@ protected:
 
             if (windowHandle()) {
 
-                lastWindowGeometry = geometry();
-
-                const QRect screenArea =
-                    QGuiApplication::primaryScreen()
-                        ? QGuiApplication::primaryScreen()
-                            ->availableGeometry()
-                        : QRect();
-
-                if (!screenArea.isNull()) {
-
-                    const int screenCenter =
-                        screenArea.left() +
-                        screenArea.width() / 2;
-
-                    const int windowCenter =
-                        geometry().left() +
-                        geometry().width() / 2;
-
-                    if (windowCenter < screenCenter) {
-                        expansionSide = -1;
-                    } else if (windowCenter > screenCenter) {
-                        expansionSide = 1;
-                    } else {
-                        expansionSide = 0;
-                    }
-                }
-
                 if (windowHandle()->startSystemMove()) {
                     event->accept();
                     return;
@@ -231,380 +229,1004 @@ protected:
     }
 
     void paintEvent(QPaintEvent *) override
-{
-    QPainter p(this);
+    {
+        QPainter p(this);
 
-    p.setRenderHint(QPainter::Antialiasing);
-    p.setRenderHint(QPainter::TextAntialiasing);
+        p.setRenderHint(QPainter::Antialiasing);
+        p.setRenderHint(QPainter::TextAntialiasing);
 
-    trimVisualQueue();
+        trimVisualQueue();
 
-    if (visualQueue.isEmpty())
-        return;
+        if (visualQueue.isEmpty())
+            return;
 
-    /*
-     * ---------------------------------------------------------------
-     * Tipografía
-     * ---------------------------------------------------------------
-     */
+        QFont mainFont = QApplication::font();
+        mainFont.setPixelSize(19);
+        mainFont.setBold(true);
 
-    QFont font =
-        QApplication::font();
+        QFont smallFont = QApplication::font();
+        smallFont.setPixelSize(10);
+        smallFont.setBold(true);
 
-    font.setPixelSize(18);
-    font.setBold(true);
+        const int spacing = 8;
+        const int sideMargin = 12;
+        const int boxHeight = 54;
+        const int minimumBoxWidth = compactMode ? 42 : 46;
 
-    p.setFont(font);
+        const int top =
+            (height() - boxHeight) / 2 - 2;
 
-    QFontMetrics fm(font);
+        struct DrawEntry {
+            int index;
+            int width;
+            QString primary;
+            QStringList secondary;
+            QStringList keySecondary;
+        };
 
-    /*
-     * ---------------------------------------------------------------
-     * Geometría
-     * ---------------------------------------------------------------
-     */
+        QVector<DrawEntry> visibleEntries;
 
-    const int spacing = 8;
-    const int sideMargin = 12;
+        int usedWidth = 0;
 
-    const int boxHeight = 52;
-    const int minimumBoxWidth = 
-        compactMode ? 42 : 44;
+        for (int i = visualQueue.size() - 1; i >= 0; --i) {
 
-    /*
-     * Dejamos unos píxeles para la sombra inferior de las teclas.
-     */
-    const int top =
-        (height() - boxHeight) / 2 - 2;
+            const VisualEntry &entry =
+                visualQueue[i];
 
-    /*
-     * ---------------------------------------------------------------
-     * Construcción de las tarjetas
-     * ---------------------------------------------------------------
-     *
-     * Empezamos por la entrada más reciente y vamos hacia atrás.
-     *
-     * Si no caben todas, desaparecen las más antiguas.
-     *
-     * El orden visual continúa siendo:
-     *
-     *     antigua -> reciente
-     *
-     * independientemente de dónde esté situada la ventana.
-     */
+            QStringList visualKeys;
 
-    struct DrawEntry {
-        int index;
-        int width;
-        QString text;
-    };
+            for (const QString &key : entry.keys) {
 
-    QVector<DrawEntry> visibleEntries;
+                QString visualKey = key;
 
-    int usedWidth = 0;
+                /*
+                 * En modo normal las teclas especiales conservan
+                 * su nombre como leyenda principal.
+                 *
+                 * En compacto utilizan su símbolo.
+                 */
+                if (compactMode)
+                    visualKey =
+                        compactDisplayName(key);
 
-    for (int i = visualQueue.size() - 1; i >= 0; --i) {
+                visualKeys.append(visualKey);
+            }
 
-        const VisualEntry &entry =
-            visualQueue[i];
+            QString primary =
+                visualKeys.join(
+                    QStringLiteral(" + ")
+                );
 
-        QStringList visualKeys;
+            QStringList secondary;
 
-for (const QString &key : entry.keys) {
+            /*
+             * Serigrafía específica de teclas especiales en
+             * combinaciones.
+             *
+             * Las teclas normales (C, S, A, etc.) permanecen limpias.
+             */
+            QStringList keySecondary;
 
-    QString visualKey = key;
+            if (visualKeys.size() > 1) {
 
-    if (compactMode)
-        visualKey =
-            compactDisplayName(key);
+                for (const QString &key : visualKeys) {
 
-    visualKeys.append(visualKey);
-}
+                    const QString symbol =
+                        compactDisplayName(key);
 
-QString text =
-    visualKeys.join(
-        QStringLiteral(" + ")
-    );
+                    if (symbol != key &&
+                        !symbol.isEmpty()) {
 
-if (entry.repeatCount > 1) {
-    text +=
-        QStringLiteral(" ×%1")
-            .arg(entry.repeatCount);
-}
+                        keySecondary.append(symbol);
 
+                    } else {
 
-        const int textWidth =
-            fm.horizontalAdvance(text);
+                        keySecondary.append(QString());
+                    }
+                }
+            }
 
-        const int boxWidth =
-            qMax(
-                minimumBoxWidth,
-                textWidth + 24
+            /*
+             * Las leyendas ya no se obtienen de una tabla manual.
+             *
+             * XKB nos proporciona los niveles reales del layout
+             * activo de KDE.
+             *
+             * Las teclas normales conservan sus leyendas también
+             * en compacto.
+             *
+             * Las teclas especiales solo muestran serigrafía
+             * adicional en modo normal.
+             */
+            if (visualKeys.size() == 1 &&
+                entry.linuxKeyCode >= 0) {
+
+                secondary =
+                    xkbSecondaryLegends(
+                        entry.linuxKeyCode,
+                        primary
+                    );
+
+                /*
+                 * ---------------------------------------------------
+                 * Serigrafía física de teclas especiales
+                 * ---------------------------------------------------
+                 *
+                 * XKB proporciona los niveles reales de las teclas
+                 * de caracteres, pero teclas como Home, End, Print,
+                 * Delete, etc. no tienen necesariamente niveles
+                 * Unicode que podamos utilizar como serigrafía.
+                 *
+                 * En modo normal conservamos el nombre como leyenda
+                 * principal y añadimos aquí únicamente su símbolo
+                 * físico, que será dibujado como superíndice.
+                 *
+                 * En compacto NO se añade porque el símbolo ya es
+                 * la leyenda principal de la tecla.
+                 */
+                if (!compactMode) {
+
+                    static const QHash<QString, QString> specialSymbols = {
+
+                        {"Space", "␣"},
+
+                        {"Home", "⇱"},
+                        {"End", "⇲"},
+                        {"Page Up", "⇞"},
+                        {"Page Down", "⇟"},
+                        {"PgUp", "⇞"},
+                        {"PgDn", "⇟"},
+
+                        {"Insert", "Ins"},
+                        {"Ins", "Ins"},
+
+                        {"Delete", "⌦"},
+                        {"Del", "⌦"},
+
+                        {"Print", "⎙"},
+                        {"PrtSc", "⎙"},
+
+                        {"SysRq", "SysRq"},
+
+                        {"Pause", "Ⅱ"},
+
+                        {"Scroll Lock", "ScrLk"},
+                        {"ScrLk", "ScrLk"},
+
+                        {"Num Lock", "Num"},
+                        {"Num", "Num"},
+
+                        {"Caps Lock", "⇪"},
+
+                        {"Esc", "Esc"},
+                        {"Enter", "↵"},
+                        {"Backspace", "⌫"},
+                        {"Tab", "⇥"}
+                    };
+
+                    if (specialSymbols.contains(primary)) {
+
+                        const QString symbol =
+                            specialSymbols.value(primary);
+
+                        if (!secondary.contains(symbol))
+                            secondary.prepend(symbol);
+                    }
+                }
+            }
+
+            QString widthText = primary;
+
+            if (!secondary.isEmpty())
+                widthText += QStringLiteral("  ");
+
+            QFontMetrics fm(mainFont);
+
+            const int textWidth =
+                fm.horizontalAdvance(widthText);
+
+            const int boxWidth =
+                qMax(
+                    minimumBoxWidth,
+                    textWidth + 28
+                );
+
+            const int requiredWidth =
+                visibleEntries.isEmpty()
+                    ? boxWidth
+                    : boxWidth + spacing;
+
+            if (usedWidth +
+                    requiredWidth +
+                    sideMargin * 2 >
+                width()) {
+
+                break;
+            }
+
+            visibleEntries.prepend(
+                DrawEntry{
+                    i,
+                    boxWidth,
+                    primary,
+                    secondary,
+                    keySecondary
+                }
             );
 
-        const int requiredWidth =
-            visibleEntries.isEmpty()
-                ? boxWidth
-                : boxWidth + spacing;
-
-        if (usedWidth +
-                requiredWidth +
-                sideMargin * 2 >
-            width()) {
-
-            break;
+            usedWidth += requiredWidth;
         }
 
-        visibleEntries.prepend(
-            DrawEntry{
-                i,
-                boxWidth,
-                text
+        if (visibleEntries.isEmpty())
+            return;
+
+        int x =
+            (width() - usedWidth) / 2;
+
+        const qint64 now =
+            QDateTime::currentMSecsSinceEpoch();
+
+        /*
+         * -----------------------------------------------------------
+         * Paleta
+         * -----------------------------------------------------------
+         */
+
+        const QColor shadowColor(
+            0, 0, 0, 175
+        );
+
+        const QColor deepShadow(
+            0, 0, 0, 90
+        );
+
+        const QColor keyTop(
+            58, 60, 65, 255
+        );
+
+        const QColor keyMiddle(
+            42, 44, 49, 255
+        );
+
+        const QColor keyBottom(
+            27, 29, 33, 255
+        );
+
+        const QColor edge(
+            255, 255, 255, 52
+        );
+
+        const QColor edgeBottom(
+            0, 0, 0, 150
+        );
+
+        const QColor highlight(
+            255, 255, 255, 28
+        );
+
+        const QColor textColor(
+            250, 250, 252, 255
+        );
+
+        const QColor secondaryColor(
+            205, 207, 212, 185
+        );
+
+        const QColor combinationBorder(
+            255, 255, 255, 72
+        );
+
+        /*
+         * -----------------------------------------------------------
+         * Keycaps
+         * -----------------------------------------------------------
+         */
+
+        for (const DrawEntry &draw : visibleEntries) {
+
+            const VisualEntry &entry =
+                visualQueue[draw.index];
+
+            /*
+             * Entrada/salida suave.
+             *
+             * 100 ms de entrada y unos 140 ms finales.
+             */
+            const qint64 age =
+                now - entry.created;
+
+            const qint64 remaining =
+                entry.expires - now;
+
+            qreal opacity = 1.0;
+
+            if (age < 100) {
+
+                opacity =
+                    qBound(
+                        0.0,
+                        age / 100.0,
+                        1.0
+                    );
+
+            } else if (remaining < 140) {
+
+                opacity =
+                    qBound(
+                        0.0,
+                        remaining / 140.0,
+                        1.0
+                    );
             }
-        );
 
-        usedWidth +=
-            requiredWidth;
-    }
+            p.save();
 
-    if (visibleEntries.isEmpty())
-        return;
+            p.setOpacity(opacity);
 
-    /*
-     * ---------------------------------------------------------------
-     * Centrado
-     * ---------------------------------------------------------------
-     */
-
-    int x =
-        (width() - usedWidth) / 2;
-
-    /*
-     * ---------------------------------------------------------------
-     * Colores
-     * ---------------------------------------------------------------
-     */
-
-    const QColor shadowColor(
-        0,
-        0,
-        0,
-        150
-    );
-
-    const QColor keyTop(
-        62,
-        64,
-        69,
-        255
-    );
-
-    const QColor keyBottom(
-        39,
-        41,
-        45,
-        255
-    );
-
-    const QColor keyTopHighlight(
-        255,
-        255,
-        255,
-        30
-    );
-
-    const QColor keyBorder(
-        255,
-        255,
-        255,
-        45
-    );
-
-    const QColor keyBottomBorder(
-        0,
-        0,
-        0,
-        120
-    );
-
-    const QColor textColor(
-        250,
-        250,
-        252,
-        255
-    );
-
-    const QColor combinationBorder(
-        255,
-        255,
-        255,
-        75
-    );
-
-    /*
-     * ---------------------------------------------------------------
-     * Dibujar teclas
-     * ---------------------------------------------------------------
-     */
-
-    for (const DrawEntry &draw : visibleEntries) {
-
-        const VisualEntry &entry =
-            visualQueue[draw.index];
-
-        QRectF r(
-            x,
-            top,
-            draw.width,
-            boxHeight
-        );
-
-        /*
-         * -----------------------------------------------------------
-         * Sombra
-         * -----------------------------------------------------------
-         */
-
-        const QRectF shadowRect =
-            r.adjusted(
-                0,
-                3,
-                0,
-                4
+            QRectF r(
+                x,
+                top,
+                draw.width,
+                boxHeight
             );
 
-        p.setPen(Qt::NoPen);
-        p.setBrush(shadowColor);
+            /*
+             * Pequeño desplazamiento inicial para que la tecla
+             * parezca entrar desde arriba, sin resultar llamativa.
+             */
+            const qreal lift =
+                age < 120
+                    ? 3.0 * (1.0 - qBound(0.0, age / 120.0, 1.0))
+                    : 0.0;
 
-        p.drawRoundedRect(
-            shadowRect,
-            8,
-            8
-        );
+            r.translate(0, -lift);
 
-        /*
-         * -----------------------------------------------------------
-         * Cuerpo de la tecla
-         * -----------------------------------------------------------
-         */
+            /*
+             * -------------------------------------------------------
+             * Sombra profunda
+             * -------------------------------------------------------
+             */
 
-        QLinearGradient gradient(
-            r.topLeft(),
-            r.bottomLeft()
-        );
+            QRectF deepRect =
+                r.adjusted(
+                    0,
+                    5,
+                    0,
+                    7
+                );
 
-        gradient.setColorAt(
-            0.0,
-            keyTop
-        );
+            p.setPen(Qt::NoPen);
+            p.setBrush(deepShadow);
 
-        gradient.setColorAt(
-            1.0,
-            keyBottom
-        );
-
-        p.setPen(Qt::NoPen);
-        p.setBrush(gradient);
-
-        p.drawRoundedRect(
-            r,
-            8,
-            8
-        );
-
-        /*
-         * -----------------------------------------------------------
-         * Borde exterior
-         * -----------------------------------------------------------
-         */
-
-        const QColor borderColor =
-            entry.combination
-                ? combinationBorder
-                : keyBorder;
-
-        p.setPen(
-            QPen(
-                borderColor,
-                1.0
-            )
-        );
-
-        p.setBrush(Qt::NoBrush);
-
-        p.drawRoundedRect(
-            r.adjusted(
-                0.5,
-                0.5,
-                -0.5,
-                -0.5
-            ),
-            8,
-            8
-        );
-
-        /*
-         * -----------------------------------------------------------
-         * Brillo superior
-         * -----------------------------------------------------------
-         *
-         * Una pequeña línea clara en la parte superior da sensación
-         * de plástico/metal y evita el aspecto de "tarjeta plana".
-         */
-
-        QRectF highlightRect =
-            r.adjusted(
-                7,
-                2,
-                -7,
-                -r.height() + 4
+            p.drawRoundedRect(
+                deepRect,
+                8,
+                8
             );
 
-        p.setPen(
-            QPen(
-                keyTopHighlight,
-                1.0
-            )
-        );
+            /*
+             * -------------------------------------------------------
+             * Sombra principal
+             * -------------------------------------------------------
+             */
 
-        p.drawLine(
-            highlightRect.topLeft(),
-            highlightRect.topRight()
-        );
+            QRectF shadowRect =
+                r.adjusted(
+                    0,
+                    3,
+                    0,
+                    5
+                );
 
-        /*
-         * -----------------------------------------------------------
-         * Texto
-         * -----------------------------------------------------------
-         */
+            p.setBrush(shadowColor);
 
-        p.setPen(textColor);
-        p.setBrush(Qt::NoBrush);
+            p.drawRoundedRect(
+                shadowRect,
+                8,
+                8
+            );
 
-        p.drawText(
-            r,
-            Qt::AlignCenter,
-            draw.text
-        );
+            /*
+             * -------------------------------------------------------
+             * Cuerpo 3D
+             * -------------------------------------------------------
+             */
 
-        x +=
-            draw.width +
-            spacing;
+            QLinearGradient gradient(
+                r.topLeft(),
+                r.bottomLeft()
+            );
+
+            gradient.setColorAt(
+                0.0,
+                keyTop
+            );
+
+            gradient.setColorAt(
+                0.48,
+                keyMiddle
+            );
+
+            gradient.setColorAt(
+                1.0,
+                keyBottom
+            );
+
+            p.setBrush(gradient);
+            p.setPen(Qt::NoPen);
+
+            p.drawRoundedRect(
+                r,
+                8,
+                8
+            );
+
+            /*
+             * -------------------------------------------------------
+             * Borde exterior
+             * -------------------------------------------------------
+             */
+
+            const QColor borderColor =
+                entry.combination
+                    ? combinationBorder
+                    : edge;
+
+            p.setBrush(Qt::NoBrush);
+
+            p.setPen(
+                QPen(
+                    borderColor,
+                    1.0
+                )
+            );
+
+            p.drawRoundedRect(
+                r.adjusted(
+                    0.5,
+                    0.5,
+                    -0.5,
+                    -0.5
+                ),
+                8,
+                8
+            );
+
+            /*
+             * -------------------------------------------------------
+             * Línea superior de plástico
+             * -------------------------------------------------------
+             */
+
+            p.setPen(
+                QPen(
+                    highlight,
+                    1.0
+                )
+            );
+
+            p.drawLine(
+                r.left() + 8,
+                r.top() + 2,
+                r.right() - 8,
+                r.top() + 2
+            );
+
+            /*
+             * -------------------------------------------------------
+             * Borde inferior sutil
+             * -------------------------------------------------------
+             */
+
+            p.setPen(
+                QPen(
+                    edgeBottom,
+                    1.0
+                )
+            );
+
+            p.drawLine(
+                r.left() + 7,
+                r.bottom() - 1,
+                r.right() - 7,
+                r.bottom() - 1
+            );
+
+            /*
+             * -------------------------------------------------------
+             * Leyenda secundaria
+             * -------------------------------------------------------
+             */
+
+            if (!draw.secondary.isEmpty()) {
+
+                /*
+                 * Serigrafía física de la keycap.
+                 *
+                 * Las leyendas secundarias se colocan verticalmente
+                 * en la esquina superior derecha, como en una tecla
+                 * física real.
+                 */
+
+                QFont legendFont =
+                    QApplication::font();
+
+                /*
+                 * Serigrafía de teclas especiales individuales.
+                 *
+                 * Un poco más grande que los superíndices de las
+                 * combinaciones para mejorar la legibilidad.
+                 */
+                legendFont.setPixelSize(12);
+                legendFont.setBold(true);
+
+                p.setFont(legendFont);
+                p.setPen(secondaryColor);
+
+                const int legendCount =
+                    qMin(2, draw.secondary.size());
+
+                QFontMetrics legendMetrics(legendFont);
+
+                const int rightMargin = 7;
+                const int topMargin = 4;
+                const int lineSpacing = 1;
+
+                const int lineHeight =
+                    legendMetrics.height();
+
+                for (int i = 0; i < legendCount; ++i) {
+
+                    const QString &legend =
+                        draw.secondary.at(i);
+
+                    const int textWidth =
+                        legendMetrics.horizontalAdvance(
+                            legend
+                        );
+
+                    QRectF legendRect(
+                        r.right()
+                            - rightMargin
+                            - textWidth,
+                        r.top()
+                            + topMargin
+                            + i * (lineHeight + lineSpacing),
+                        textWidth,
+                        lineHeight
+                    );
+
+                    p.drawText(
+                        legendRect,
+                        Qt::AlignRight |
+                        Qt::AlignTop,
+                        legend
+                    );
+                }
+            }
+
+            /*
+             * -------------------------------------------------------
+             * Serigrafía de teclas especiales en combinaciones
+             * -------------------------------------------------------
+             *
+             * Cada componente de la combinación dispone de una
+             * "celda de keycap" virtual.
+             *
+             * Esto permite colocar el símbolo de cada tecla especial
+             * como un verdadero superíndice respecto a SU tecla,
+             * en lugar de posicionarlo respecto a toda la combinación.
+             *
+             * Ejemplo:
+             *
+             *       ⌃        ⇧
+             *     Ctrl     Shift      S
+             *
+             * La S no recibe serigrafía.
+             */
+
+            if (entry.combination &&
+                !draw.keySecondary.isEmpty()) {
+
+                QFont combinationLegendFont =
+                    QApplication::font();
+
+                combinationLegendFont.setPixelSize(12);
+                combinationLegendFont.setBold(true);
+
+                p.setFont(combinationLegendFont);
+                p.setPen(secondaryColor);
+
+                QFontMetrics combinationMetrics(
+                    combinationLegendFont
+                );
+
+                QFontMetrics mainMetrics(mainFont);
+
+                const QStringList parts =
+                    entry.keys;
+
+                /*
+                 * Anchura de cada componente.
+                 *
+                 * Se calcula exactamente con la misma fuente que
+                 * utiliza la leyenda principal, de modo que las
+                 * posiciones coincidan visualmente.
+                 */
+                QVector<int> componentWidths;
+
+                int totalComponentsWidth = 0;
+
+                const QString separator =
+                    QStringLiteral(" + ");
+
+                const int separatorWidth =
+                    mainMetrics.horizontalAdvance(separator);
+
+                for (const QString &part : parts) {
+
+                    const QString component =
+                        compactMode
+                            ? compactDisplayName(part)
+                            : part;
+
+                    const int componentWidth =
+                        mainMetrics.horizontalAdvance(component);
+
+                    componentWidths.append(componentWidth);
+
+                    totalComponentsWidth += componentWidth;
+                }
+
+                if (parts.size() > 1) {
+
+                    totalComponentsWidth +=
+                        separatorWidth *
+                        (parts.size() - 1);
+                }
+
+                /*
+                 * La combinación se centra dentro de la keycap.
+                 *
+                 * Cada componente obtiene después su propia celda
+                 * lógica.
+                 */
+                qreal componentX =
+                    r.left() +
+                    (r.width() - totalComponentsWidth) / 2.0;
+
+                for (int i = 0;
+                     i < parts.size();
+                     ++i) {
+
+                    const QString component =
+                        compactMode
+                            ? compactDisplayName(parts.at(i))
+                            : parts.at(i);
+
+                    const int componentWidth =
+                        componentWidths.at(i);
+
+                    const QString legend =
+                        i < draw.keySecondary.size()
+                            ? draw.keySecondary.at(i)
+                            : QString();
+
+                    /*
+                     * ---------------------------------------------------
+                     * Celda virtual del componente
+                     * ---------------------------------------------------
+                     *
+                     * No dibujamos esta celda.
+                     *
+                     * Solo existe para determinar de forma estable
+                     * dónde debe quedar su superíndice.
+                     */
+                    QRectF componentCell(
+                        componentX,
+                        r.top(),
+                        componentWidth,
+                        r.height()
+                    );
+
+                    if (!legend.isEmpty()) {
+
+                        const int legendWidth =
+                            combinationMetrics.horizontalAdvance(
+                                legend
+                            );
+
+                        const int legendHeight =
+                            combinationMetrics.height();
+
+                        /*
+                         * Superíndice alineado a la derecha de SU
+                         * propia celda.
+                         *
+                         * El pequeño desplazamiento hacia arriba y
+                         * hacia la derecha da el aspecto de leyenda
+                         * física de una keycap real.
+                         */
+                        const qreal rightInset = 1.0;
+                        const qreal topInset = 3.0;
+
+                        QRectF legendRect(
+                            componentCell.right()
+                                - legendWidth
+                                + rightInset,
+                            componentCell.top()
+                                + topInset,
+                            legendWidth,
+                            legendHeight
+                        );
+
+                        p.drawText(
+                            legendRect,
+                            Qt::AlignRight |
+                            Qt::AlignTop,
+                            legend
+                        );
+                    }
+
+                    /*
+                     * Siguiente celda virtual.
+                     */
+                    componentX += componentWidth;
+
+                    if (i + 1 < parts.size())
+                        componentX += separatorWidth;
+                }
+            }
+
+            /*
+             * -------------------------------------------------------
+             * Burbuja de repetición
+             * -------------------------------------------------------
+             *
+             * El contador vive fuera de la keycap para no interferir
+             * con las leyendas físicas de la tecla.
+             */
+
+            if (entry.repeatCount > 1) {
+
+                const QString countText =
+                    QStringLiteral("×%1")
+                        .arg(entry.repeatCount);
+
+                QFont badgeFont =
+                    QApplication::font();
+
+                /*
+                 * Texto de la burbuja ligeramente mayor para mejorar
+                 * la legibilidad.
+                 */
+                badgeFont.setPixelSize(11);
+                badgeFont.setBold(true);
+
+                QFontMetrics badgeMetrics(badgeFont);
+
+                const int badgeWidth =
+                    qMax(
+                        24,
+                        badgeMetrics.horizontalAdvance(countText) + 12
+                    );
+
+                const int badgeHeight = 19;
+
+                /*
+                 * ---------------------------------------------------
+                 * Micro-lupa de entrada
+                 * ---------------------------------------------------
+                 *
+                 * La burbuja aparece ligeramente ampliada y vuelve
+                 * rápidamente a su tamaño normal.
+                 *
+                 * Es deliberadamente sutil para conservar el aspecto
+                 * elegante de una notificación de interfaz.
+                 */
+                /*
+                 * Micro-lupa ligeramente más visible:
+                 *
+                 * 118 % al aparecer → 100 % al asentarse.
+                 *
+                 * La animación sigue siendo breve para conservar
+                 * el aspecto elegante de una notificación.
+                 */
+                const qreal badgeScale =
+                    age < 140
+                        ? 1.0 +
+                          0.18 *
+                          (1.0 -
+                           qBound(
+                               0.0,
+                               age / 140.0,
+                               1.0
+                           ))
+                        : 1.0;
+
+                const qreal normalBadgeWidth =
+                    badgeWidth;
+
+                const qreal normalBadgeHeight =
+                    badgeHeight;
+
+                const qreal scaledBadgeWidth =
+                    normalBadgeWidth * badgeScale;
+
+                const qreal scaledBadgeHeight =
+                    normalBadgeHeight * badgeScale;
+
+                /*
+                 * Mantenemos la esquina superior izquierda como
+                 * referencia para que la burbuja no "salte" durante
+                 * la animación.
+                 */
+                QRectF badgeRect(
+                    r.left() - 5,
+                    r.top() - 7,
+                    scaledBadgeWidth,
+                    scaledBadgeHeight
+                );
+
+                /*
+                 * ---------------------------------------------------
+                 * Sombra exterior.
+                 * ---------------------------------------------------
+                 */
+
+                /*
+                 * Sombra exterior.
+                 */
+                QRectF badgeShadow =
+                    badgeRect.adjusted(
+                        0,
+                        2,
+                        0,
+                        3
+                    );
+
+                p.setPen(Qt::NoPen);
+
+                p.setBrush(
+                    QColor(
+                        0,
+                        0,
+                        0,
+                        170
+                    )
+                );
+
+                p.drawRoundedRect(
+                    badgeShadow,
+                    8.5,
+                    8.5
+                );
+
+                /*
+                 * Fondo tipo "pill" translúcido.
+                 */
+                QLinearGradient badgeGradient(
+                    badgeRect.topLeft(),
+                    badgeRect.bottomLeft()
+                );
+
+                badgeGradient.setColorAt(
+                    0.0,
+                    QColor(
+                        82,
+                        84,
+                        90,
+                        245
+                    )
+                );
+
+                badgeGradient.setColorAt(
+                    1.0,
+                    QColor(
+                        42,
+                        44,
+                        49,
+                        245
+                    )
+                );
+
+                p.setBrush(badgeGradient);
+
+                p.drawRoundedRect(
+                    badgeRect,
+                    8.5,
+                    8.5
+                );
+
+                /*
+                 * Borde muy fino.
+                 */
+                p.setBrush(Qt::NoBrush);
+
+                p.setPen(
+                    QPen(
+                        QColor(
+                            255,
+                            255,
+                            255,
+                            70
+                        ),
+                        1.0
+                    )
+                );
+
+                p.drawRoundedRect(
+                    badgeRect.adjusted(
+                        0.5,
+                        0.5,
+                        -0.5,
+                        -0.5
+                    ),
+                    8,
+                    8
+                );
+
+                /*
+                 * Texto.
+                 */
+                p.setFont(badgeFont);
+
+                p.setPen(
+                    QColor(
+                        248,
+                        248,
+                        250,
+                        235
+                    )
+                );
+
+                p.drawText(
+                    badgeRect,
+                    Qt::AlignCenter,
+                    countText
+                );
+            }
+
+            /*
+             * -------------------------------------------------------
+             * Leyenda principal
+             * -------------------------------------------------------
+             */
+
+            p.setFont(mainFont);
+            p.setPen(textColor);
+
+            QRectF primaryRect = r;
+
+            if (!draw.secondary.isEmpty()) {
+
+                /*
+                 * Dejamos espacio visual para la leyenda secundaria.
+                 */
+                primaryRect.adjust(
+                    0,
+                    3,
+                    0,
+                    2
+                );
+            }
+
+            p.drawText(
+                primaryRect,
+                Qt::AlignCenter,
+                draw.primary
+            );
+
+            p.restore();
+
+            x +=
+                draw.width +
+                spacing;
+        }
     }
-}
-
 
 
 private:
-
-    // Dirección de expansión del historial:
-    // -1 = hacia la derecha
-    //  1 = hacia la izquierda
-    //  0 = centrado
-    int expansionSide = 0;
-
-    // Última geometría conocida de la ventana.
-    QRect lastWindowGeometry;
 
     // ---------------------------------------------------------------
     // Linux / XKB
@@ -1474,6 +2096,221 @@ private:
      * ---------------------------------------------------------------
      */
 
+    QStringList xkbSecondaryLegends(
+        int linuxCode,
+        const QString &primary
+    ) const
+    {
+        QStringList result;
+
+        if (!xkbState ||
+            !xkbKeymap ||
+            linuxCode < 0) {
+
+            return result;
+        }
+
+        const xkb_keycode_t code =
+            xkbKeycodeFromLinuxCode(linuxCode);
+
+        if (code == XKB_KEYCODE_INVALID)
+            return result;
+
+        /*
+         * -----------------------------------------------------------
+         * Teclas especiales con serigrafía física fija
+         * -----------------------------------------------------------
+         *
+         * Print y Pause tienen varias entradas XKB asociadas
+         * dependiendo del layout/implementación. Para el overlay
+         * queremos representar únicamente la serigrafía física de
+         * la tecla, no nombres internos como Sys_Req, Break, etc.
+         */
+        if (primary == QStringLiteral("PrtSc") ||
+            primary == QStringLiteral("Print")) {
+
+            result.append(QStringLiteral("⎙"));
+            return result;
+        }
+
+        if (primary == QStringLiteral("Pause")) {
+            result.append(QStringLiteral("Ⅱ"));
+            return result;
+        }
+
+        /*
+         * Tab tiene keysyms auxiliares ISO_* en algunos keymaps.
+         * No son serigrafía física de la tecla.
+         */
+        if (primary == QStringLiteral("Tab")) {
+            result.append(QStringLiteral("⇥"));
+            return result;
+        }
+
+        /*
+         * Determinamos el layout actualmente activo.
+         */
+        const xkb_layout_index_t layout =
+            xkb_state_key_get_layout(
+                xkbState,
+                code
+            );
+
+        if (layout == XKB_LAYOUT_INVALID)
+            return result;
+
+        const xkb_level_index_t levels =
+            xkb_keymap_num_levels_for_key(
+                xkbKeymap,
+                code,
+                layout
+            );
+
+        /*
+         * No mostramos una cantidad absurda de leyendas.
+         * Un teclado convencional normalmente tiene 2-4 niveles.
+         */
+        const xkb_level_index_t maxLevels =
+            qMin<xkb_level_index_t>(
+                levels,
+                4
+            );
+
+        for (xkb_level_index_t level = 0;
+             level < maxLevels;
+             ++level) {
+
+            const xkb_keysym_t *syms = nullptr;
+
+            const int count =
+                xkb_keymap_key_get_syms_by_level(
+                    xkbKeymap,
+                    code,
+                    layout,
+                    level,
+                    &syms
+                );
+
+            if (count <= 0 || !syms)
+                continue;
+
+            for (int i = 0; i < count; ++i) {
+
+                /*
+                 * Las dead keys son estados de composición,
+                 * no leyendas físicas de la keycap.
+                 */
+                char symName[128] = {};
+
+                xkb_keysym_get_name(
+                    syms[i],
+                    symName,
+                    sizeof(symName)
+                );
+
+                if (QString::fromLatin1(symName)
+                        .startsWith(QStringLiteral("dead_"))) {
+                    continue;
+                }
+
+                const QString text =
+                    keysymToText(syms[i]);
+
+                if (text.isEmpty())
+                    continue;
+
+                /*
+                 * Evitamos duplicar el carácter principal.
+                 */
+                if (text == primary)
+                    continue;
+
+                if (result.contains(text))
+                    continue;
+
+                result.append(text);
+            }
+        }
+
+        /*
+         * Las teclas especiales solo llevan serigrafía adicional
+         * en modo normal.
+         *
+         * Los caracteres normales sí conservan sus leyendas en
+         * compacto.
+         */
+        bool characterKey = false;
+
+        if (primary.size() == 1) {
+
+            const QChar ch =
+                primary.at(0);
+
+            characterKey =
+                ch.isLetterOrNumber() ||
+                QStringLiteral(
+                    "!@#$%^&*()_+=-{}[]:;\"'<>,.?/\\\\|~`"
+                ).contains(ch);
+        }
+
+        if (!characterKey && compactMode)
+            result.clear();
+
+        /*
+         * -----------------------------------------------------------
+         * Serigrafía de teclas especiales
+         * -----------------------------------------------------------
+         *
+         * En modo normal:
+         *
+         *     Space       <- principal
+         *          ␣      <- serigrafía
+         *
+         * En compacto:
+         *
+         *     ␣           <- principal
+         *
+         * De esta forma ambos modos tienen una identidad visual
+         * claramente diferenciada.
+         */
+
+        if (!characterKey && !compactMode) {
+
+            const QString symbol =
+                compactDisplayName(primary);
+
+            if (symbol != primary) {
+
+                const QStringList symbolicKeys = {
+                    QStringLiteral("⌃"),
+                    QStringLiteral("⌥"),
+                    QStringLiteral("⎇"),
+                    QStringLiteral("⇧"),
+                    QStringLiteral("⌘"),
+                    QStringLiteral("↵"),
+                    QStringLiteral("⌫"),
+                    QStringLiteral("⇥"),
+                    QStringLiteral("␣"),
+                    QStringLiteral("⇪"),
+                    QStringLiteral("⌦")
+                };
+
+                if (symbolicKeys.contains(symbol))
+                    result.prepend(symbol);
+            }
+        }
+
+        /*
+         * La serigrafía física debe ser discreta.
+         *
+         * Como máximo mostramos dos leyendas secundarias.
+         */
+        while (result.size() > 2)
+            result.removeLast();
+
+        return result;
+    }
+
     void updateXkbState(
         int linuxCode,
         bool pressed
@@ -1551,149 +2388,102 @@ private:
 
     /*
      * ---------------------------------------------------------------
+     * Posición de la ventana
+     * ---------------------------------------------------------------
+     */
+
+    void saveWindowPosition()
+    {
+        QSettings settings(
+            QStringLiteral("KDE"),
+            QStringLiteral("KDEKeyCast")
+        );
+
+        settings.setValue(
+            QStringLiteral("windowPosition"),
+            pos()
+        );
+    }
+
+    void restoreWindowPosition()
+    {
+        QSettings settings(
+            QStringLiteral("KDE"),
+            QStringLiteral("KDEKeyCast")
+        );
+
+        const QVariant value =
+            settings.value(
+                QStringLiteral("windowPosition")
+            );
+
+        if (value.isValid()) {
+            const QPoint savedPosition =
+                value.toPoint();
+
+            const QRect available =
+                QGuiApplication::primaryScreen()
+                    ? QGuiApplication::primaryScreen()
+                        ->availableGeometry()
+                    : QRect();
+
+            if (available.isValid()) {
+
+                const QRect restored(
+                    savedPosition,
+                    size()
+                );
+
+                if (available.intersects(restored)) {
+                    move(savedPosition);
+                    return;
+                }
+            }
+        }
+
+        /*
+         * Primera ejecución:
+         * posición inferior centrada.
+         */
+        if (auto *screen =
+                QGuiApplication::primaryScreen()) {
+
+            const QRect area =
+                screen->availableGeometry();
+
+            move(
+                area.left() +
+                    (area.width() - width()) / 2,
+                area.top() +
+                    area.height() -
+                    height() -
+                    80
+            );
+        }
+    }
+
+    /*
+     * ---------------------------------------------------------------
      * Visual queue
      * ---------------------------------------------------------------
      */
-       void adjustWindowWidth()
-    {
-        
-    if (visualQueue.isEmpty())
-        return;
-
-    QFont font =
-        QApplication::font();
-
-    font.setPixelSize(18);
-    font.setBold(true);
-
-    QFontMetrics fm(font);
-
-    const int spacing = 8;
-    const int sideMargin = 12;
-    const int minimumBoxWidth =
-        compactMode ? 42 : 44;
-
-    int contentWidth = 0;
-
-    for (const VisualEntry &entry : visualQueue) {
-
-        QStringList visualKeys;
-
-        for (const QString &key : entry.keys) {
-
-            QString visualKey = key;
-
-            if (compactMode)
-                visualKey =
-                    compactDisplayName(key);
-
-            visualKeys.append(visualKey);
-        }
-
-        QString text =
-            visualKeys.join(
-                QStringLiteral(" + ")
-            );
-
-        if (entry.repeatCount > 1) {
-            text +=
-                QStringLiteral(" ×%1")
-                    .arg(entry.repeatCount);
-        }
-
-        const int textWidth =
-            fm.horizontalAdvance(text);
-
-        const int boxWidth =
-            qMax(
-                minimumBoxWidth,
-                textWidth + 24
-            );
-
-        if (contentWidth > 0)
-            contentWidth += spacing;
-
-        contentWidth += boxWidth;
-    }
-
-    const int desiredWidth =
-        contentWidth +
-        sideMargin * 2;
-
-    /*
-     * Evitamos ventanas ridículamente pequeñas o grandes.
-     */
-    const int minWidth = 70;
-    const int maxWidth = 1000;
-
-    const int newWidth =
-        qBound(
-            minWidth,
-            desiredWidth,
-            maxWidth
-        );
-
-    const QRect oldGeometry =
-        geometry();
-
-    if (oldGeometry.width() == newWidth)
-        return;
-
-    /*
-     * Mantenemos el CENTRO de la ventana.
-     *
-     * Esto es importante:
-     *
-     *     antes       después
-     *
-     *       [----]       [--------]
-     *          ^              ^
-     *        centro          centro
-     *
-     * La ventana crece por ambos lados.
-     */
-    const int centerX =
-        oldGeometry.left() +
-        oldGeometry.width() / 2;
-
-    const int newLeft =
-        centerX -
-        newWidth / 2;
-
-    setGeometry(
-        newLeft,
-        oldGeometry.top(),
-        newWidth,
-        oldGeometry.height()
-    );
-    }
-
-
-
-
     void trimVisualQueue()
     {
         const qint64 now =
             QDateTime::currentMSecsSinceEpoch();
 
-        bool changed = false;
-
         while (!visualQueue.isEmpty() &&
-            visualQueue.first().expires <= now) {
+               visualQueue.first().expires <= now) {
 
             visualQueue.removeFirst();
-            changed = true;
-            }
-
-        if (changed)
-            adjustWindowWidth();
-
         }
-    
+    }
+
 
     void addVisualEntry(
     const QStringList &keys,
-    bool combination
+    bool combination,
+    int linuxKeyCode = -1
 )
 {
     if (keys.isEmpty())
@@ -1735,7 +2525,6 @@ private:
             last.repeatCount++;
             last.expires = now + 1800;
 
-            adjustWindowWidth();
             update();
 
             return;
@@ -1749,13 +2538,16 @@ private:
     entry.expires = now + 1800;
     entry.combination = combination;
     entry.repeatCount = 1;
+    entry.linuxKeyCode =
+        keys.size() == 1 && !combination
+            ? linuxKeyCode
+            : -1;
 
     visualQueue.append(entry);
 
     while (visualQueue.size() > 6)
         visualQueue.removeFirst();
 
-    adjustWindowWidth();
     update();
 }
 
@@ -2057,6 +2849,18 @@ private:
                 isModifier(keyName);
                 
                 if (pressed &&
+                keyName == QStringLiteral("KEY_T") &&
+                pressedModifiers.contains(
+                    QStringLiteral("KEY_LEFTCTRL")
+                ) &&
+                pressedModifiers.contains(
+                    QStringLiteral("KEY_LEFTSHIFT")
+                )) {
+
+                toggleAlwaysOnTop();
+            }
+
+            if (pressed &&
                     keyName == QStringLiteral("KEY_M") &&
                     pressedModifiers.contains(
                         QStringLiteral("KEY_LEFTCTRL")
@@ -2293,7 +3097,8 @@ if (pressed) {
         QStringList{
             visualName
         },
-        false
+        false,
+        linuxKeyCode
     );
 
     continue;
@@ -2395,18 +3200,56 @@ if (released) {
         }
     }
     
+    void toggleAlwaysOnTop()
+    {
+        alwaysOnTop = !alwaysOnTop;
+
+        const QPoint oldPosition = pos();
+
+        const Qt::WindowFlags flags =
+            Qt::FramelessWindowHint |
+            Qt::Tool |
+            (alwaysOnTop
+                ? Qt::WindowStaysOnTopHint
+                : Qt::WindowType(0));
+
+        setWindowFlags(flags);
+        move(oldPosition);
+        show();
+
+        qDebug()
+            << "KDE KeyCast: always on top ="
+            << alwaysOnTop;
+    }
+
     void toggleCompactMode()
-{
-    compactMode = !compactMode;
+    {
+        compactMode = !compactMode;
 
-    qDebug()
-        << "KDE KeyCast: compact mode ="
-        << compactMode;
-        
-    adjustWindowWidth();
-    update();
-}
+        const int newWidth =
+            compactMode ? 300 : 400;
 
+        const QRect oldGeometry =
+            geometry();
+
+        const int centerX =
+            oldGeometry.left() +
+            oldGeometry.width() / 2;
+
+        setFixedWidth(newWidth);
+
+        move(
+            centerX - newWidth / 2,
+            oldGeometry.top()
+        );
+
+        qDebug()
+            << "KDE KeyCast: compact mode ="
+            << compactMode
+            << "width =" << newWidth;
+
+        update();
+    }
 
     /*
      * ---------------------------------------------------------------
@@ -2436,6 +3279,7 @@ if (released) {
     QSet<QString> pressedModifiers;
     
     bool compactMode = false;
+    bool alwaysOnTop = true;
 
 };
 
