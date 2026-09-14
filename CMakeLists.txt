@@ -11,6 +11,7 @@ set(CMAKE_AUTORCC ON)
 
 find_package(Qt6 REQUIRED COMPONENTS
     Widgets
+    DBus
 )
 
 find_package(PkgConfig REQUIRED)
@@ -44,6 +45,8 @@ target_compile_options(kde-keycast PRIVATE
 
 target_link_libraries(kde-keycast PRIVATE
     Qt6::Widgets
+    Qt6::DBus
+    Qt6::DBus
     ${XKBCOMMON_LIBRARIES}
     ${WAYLAND_LIBRARIES}
 )

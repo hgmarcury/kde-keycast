@@ -18,6 +18,10 @@
 #include <QSocketNotifier>
 #include <QSettings>
 #include <QMoveEvent>
+#include <QDir>
+#include <QFile>
+#include <QRegularExpression>
+#include <QtDBus/QtDBus>
 
 #include <wayland-client.h>
 
@@ -157,6 +161,27 @@ public:
         );
 
         timer.start();
+
+        /*
+         * Sincronización del estado real de multimedia.
+         *
+         * 250 ms es suficientemente rápido para que el cambio sea
+         * prácticamente inmediato y evita hacer consultas
+         * continuamente.
+         */
+        mediaStateTimer.setInterval(250);
+
+        connect(
+            &mediaStateTimer,
+            &QTimer::timeout,
+            this,
+            [this] {
+                updateMediaState();
+            }
+        );
+
+        updateMediaState();
+        mediaStateTimer.start();
 
         show();
     }
@@ -523,16 +548,30 @@ protected:
          * -----------------------------------------------------------
          */
 
+        /*
+         * -----------------------------------------------------------
+         * Keycaps
+         * -----------------------------------------------------------
+         *
+         * Las teclas individuales se dibujan como hasta ahora.
+         *
+         * Las combinaciones se representan como keycaps
+         * independientes:
+         *
+         *     [ Ctrl ] + [ C ]
+         *
+         * en lugar de:
+         *
+         *     [ Ctrl + C ]
+         *
+         * El símbolo + queda fuera de las keycaps.
+         */
+
         for (const DrawEntry &draw : visibleEntries) {
 
             const VisualEntry &entry =
                 visualQueue[draw.index];
 
-            /*
-             * Entrada/salida suave.
-             *
-             * 100 ms de entrada y unos 140 ms finales.
-             */
             const qint64 age =
                 now - entry.created;
 
@@ -564,401 +603,216 @@ protected:
 
             p.setOpacity(opacity);
 
-            QRectF r(
-                x,
-                top,
-                draw.width,
-                boxHeight
-            );
-
-            /*
-             * Pequeño desplazamiento inicial para que la tecla
-             * parezca entrar desde arriba, sin resultar llamativa.
-             */
             const qreal lift =
                 age < 120
-                    ? 3.0 * (1.0 - qBound(0.0, age / 120.0, 1.0))
+                    ? 3.0 *
+                      (1.0 -
+                       qBound(
+                           0.0,
+                           age / 120.0,
+                           1.0
+                       ))
                     : 0.0;
 
-            r.translate(0, -lift);
-
             /*
              * -------------------------------------------------------
-             * Sombra profunda
+             * Lambda común para dibujar una keycap.
              * -------------------------------------------------------
              */
 
-            QRectF deepRect =
-                r.adjusted(
-                    0,
-                    5,
-                    0,
-                    7
-                );
+            auto drawKeycap =
+                [&](const QRectF &rect,
+                    const QString &text,
+                    const QStringList &legends,
+                    bool combinationCap) {
 
-            p.setPen(Qt::NoPen);
-            p.setBrush(deepShadow);
-
-            p.drawRoundedRect(
-                deepRect,
-                8,
-                8
-            );
-
-            /*
-             * -------------------------------------------------------
-             * Sombra principal
-             * -------------------------------------------------------
-             */
-
-            QRectF shadowRect =
-                r.adjusted(
-                    0,
-                    3,
-                    0,
-                    5
-                );
-
-            p.setBrush(shadowColor);
-
-            p.drawRoundedRect(
-                shadowRect,
-                8,
-                8
-            );
-
-            /*
-             * -------------------------------------------------------
-             * Cuerpo 3D
-             * -------------------------------------------------------
-             */
-
-            QLinearGradient gradient(
-                r.topLeft(),
-                r.bottomLeft()
-            );
-
-            gradient.setColorAt(
-                0.0,
-                keyTop
-            );
-
-            gradient.setColorAt(
-                0.48,
-                keyMiddle
-            );
-
-            gradient.setColorAt(
-                1.0,
-                keyBottom
-            );
-
-            p.setBrush(gradient);
-            p.setPen(Qt::NoPen);
-
-            p.drawRoundedRect(
-                r,
-                8,
-                8
-            );
-
-            /*
-             * -------------------------------------------------------
-             * Borde exterior
-             * -------------------------------------------------------
-             */
-
-            const QColor borderColor =
-                entry.combination
-                    ? combinationBorder
-                    : edge;
-
-            p.setBrush(Qt::NoBrush);
-
-            p.setPen(
-                QPen(
-                    borderColor,
-                    1.0
-                )
-            );
-
-            p.drawRoundedRect(
-                r.adjusted(
-                    0.5,
-                    0.5,
-                    -0.5,
-                    -0.5
-                ),
-                8,
-                8
-            );
-
-            /*
-             * -------------------------------------------------------
-             * Línea superior de plástico
-             * -------------------------------------------------------
-             */
-
-            p.setPen(
-                QPen(
-                    highlight,
-                    1.0
-                )
-            );
-
-            p.drawLine(
-                r.left() + 8,
-                r.top() + 2,
-                r.right() - 8,
-                r.top() + 2
-            );
-
-            /*
-             * -------------------------------------------------------
-             * Borde inferior sutil
-             * -------------------------------------------------------
-             */
-
-            p.setPen(
-                QPen(
-                    edgeBottom,
-                    1.0
-                )
-            );
-
-            p.drawLine(
-                r.left() + 7,
-                r.bottom() - 1,
-                r.right() - 7,
-                r.bottom() - 1
-            );
-
-            /*
-             * -------------------------------------------------------
-             * Leyenda secundaria
-             * -------------------------------------------------------
-             */
-
-            if (!draw.secondary.isEmpty()) {
+                QRectF keyRect = rect;
+                keyRect.translate(0, -lift);
 
                 /*
-                 * Serigrafía física de la keycap.
-                 *
-                 * Las leyendas secundarias se colocan verticalmente
-                 * en la esquina superior derecha, como en una tecla
-                 * física real.
+                 * Sombra profunda.
                  */
-
-                QFont legendFont =
-                    QApplication::font();
-
-                /*
-                 * Serigrafía de teclas especiales individuales.
-                 *
-                 * Un poco más grande que los superíndices de las
-                 * combinaciones para mejorar la legibilidad.
-                 */
-                legendFont.setPixelSize(12);
-                legendFont.setBold(true);
-
-                p.setFont(legendFont);
-                p.setPen(secondaryColor);
-
-                const int legendCount =
-                    qMin(2, draw.secondary.size());
-
-                QFontMetrics legendMetrics(legendFont);
-
-                const int rightMargin = 7;
-                const int topMargin = 4;
-                const int lineSpacing = 1;
-
-                const int lineHeight =
-                    legendMetrics.height();
-
-                for (int i = 0; i < legendCount; ++i) {
-
-                    const QString &legend =
-                        draw.secondary.at(i);
-
-                    const int textWidth =
-                        legendMetrics.horizontalAdvance(
-                            legend
-                        );
-
-                    QRectF legendRect(
-                        r.right()
-                            - rightMargin
-                            - textWidth,
-                        r.top()
-                            + topMargin
-                            + i * (lineHeight + lineSpacing),
-                        textWidth,
-                        lineHeight
+                QRectF deepRect =
+                    keyRect.adjusted(
+                        0,
+                        5,
+                        0,
+                        7
                     );
 
-                    p.drawText(
-                        legendRect,
-                        Qt::AlignRight |
-                        Qt::AlignTop,
-                        legend
-                    );
-                }
-            }
+                p.setPen(Qt::NoPen);
+                p.setBrush(deepShadow);
 
-            /*
-             * -------------------------------------------------------
-             * Serigrafía de teclas especiales en combinaciones
-             * -------------------------------------------------------
-             *
-             * Cada componente de la combinación dispone de una
-             * "celda de keycap" virtual.
-             *
-             * Esto permite colocar el símbolo de cada tecla especial
-             * como un verdadero superíndice respecto a SU tecla,
-             * en lugar de posicionarlo respecto a toda la combinación.
-             *
-             * Ejemplo:
-             *
-             *       ⌃        ⇧
-             *     Ctrl     Shift      S
-             *
-             * La S no recibe serigrafía.
-             */
-
-            if (entry.combination &&
-                !draw.keySecondary.isEmpty()) {
-
-                QFont combinationLegendFont =
-                    QApplication::font();
-
-                combinationLegendFont.setPixelSize(12);
-                combinationLegendFont.setBold(true);
-
-                p.setFont(combinationLegendFont);
-                p.setPen(secondaryColor);
-
-                QFontMetrics combinationMetrics(
-                    combinationLegendFont
+                p.drawRoundedRect(
+                    deepRect,
+                    8,
+                    8
                 );
 
-                QFontMetrics mainMetrics(mainFont);
-
-                const QStringList parts =
-                    entry.keys;
-
                 /*
-                 * Anchura de cada componente.
-                 *
-                 * Se calcula exactamente con la misma fuente que
-                 * utiliza la leyenda principal, de modo que las
-                 * posiciones coincidan visualmente.
+                 * Sombra principal.
                  */
-                QVector<int> componentWidths;
-
-                int totalComponentsWidth = 0;
-
-                const QString separator =
-                    QStringLiteral(" + ");
-
-                const int separatorWidth =
-                    mainMetrics.horizontalAdvance(separator);
-
-                for (const QString &part : parts) {
-
-                    const QString component =
-                        compactMode
-                            ? compactDisplayName(part)
-                            : part;
-
-                    const int componentWidth =
-                        mainMetrics.horizontalAdvance(component);
-
-                    componentWidths.append(componentWidth);
-
-                    totalComponentsWidth += componentWidth;
-                }
-
-                if (parts.size() > 1) {
-
-                    totalComponentsWidth +=
-                        separatorWidth *
-                        (parts.size() - 1);
-                }
-
-                /*
-                 * La combinación se centra dentro de la keycap.
-                 *
-                 * Cada componente obtiene después su propia celda
-                 * lógica.
-                 */
-                qreal componentX =
-                    r.left() +
-                    (r.width() - totalComponentsWidth) / 2.0;
-
-                for (int i = 0;
-                     i < parts.size();
-                     ++i) {
-
-                    const QString component =
-                        compactMode
-                            ? compactDisplayName(parts.at(i))
-                            : parts.at(i);
-
-                    const int componentWidth =
-                        componentWidths.at(i);
-
-                    const QString legend =
-                        i < draw.keySecondary.size()
-                            ? draw.keySecondary.at(i)
-                            : QString();
-
-                    /*
-                     * ---------------------------------------------------
-                     * Celda virtual del componente
-                     * ---------------------------------------------------
-                     *
-                     * No dibujamos esta celda.
-                     *
-                     * Solo existe para determinar de forma estable
-                     * dónde debe quedar su superíndice.
-                     */
-                    QRectF componentCell(
-                        componentX,
-                        r.top(),
-                        componentWidth,
-                        r.height()
+                QRectF shadowRect =
+                    keyRect.adjusted(
+                        0,
+                        3,
+                        0,
+                        5
                     );
 
-                    if (!legend.isEmpty()) {
+                p.setBrush(shadowColor);
 
-                        const int legendWidth =
-                            combinationMetrics.horizontalAdvance(
+                p.drawRoundedRect(
+                    shadowRect,
+                    8,
+                    8
+                );
+
+                /*
+                 * Cuerpo 3D.
+                 */
+                QLinearGradient gradient(
+                    keyRect.topLeft(),
+                    keyRect.bottomLeft()
+                );
+
+                gradient.setColorAt(
+                    0.0,
+                    keyTop
+                );
+
+                gradient.setColorAt(
+                    0.48,
+                    keyMiddle
+                );
+
+                gradient.setColorAt(
+                    1.0,
+                    keyBottom
+                );
+
+                p.setBrush(gradient);
+                p.setPen(Qt::NoPen);
+
+                p.drawRoundedRect(
+                    keyRect,
+                    8,
+                    8
+                );
+
+                /*
+                 * Borde.
+                 */
+                const QColor borderColor =
+                    combinationCap
+                        ? combinationBorder
+                        : edge;
+
+                p.setBrush(Qt::NoBrush);
+
+                p.setPen(
+                    QPen(
+                        borderColor,
+                        1.0
+                    )
+                );
+
+                p.drawRoundedRect(
+                    keyRect.adjusted(
+                        0.5,
+                        0.5,
+                        -0.5,
+                        -0.5
+                    ),
+                    8,
+                    8
+                );
+
+                /*
+                 * Línea superior.
+                 */
+                p.setPen(
+                    QPen(
+                        highlight,
+                        1.0
+                    )
+                );
+
+                p.drawLine(
+                    keyRect.left() + 8,
+                    keyRect.top() + 2,
+                    keyRect.right() - 8,
+                    keyRect.top() + 2
+                );
+
+                /*
+                 * Borde inferior.
+                 */
+                p.setPen(
+                    QPen(
+                        edgeBottom,
+                        1.0
+                    )
+                );
+
+                p.drawLine(
+                    keyRect.left() + 7,
+                    keyRect.bottom() - 1,
+                    keyRect.right() - 7,
+                    keyRect.bottom() - 1
+                );
+
+                /*
+                 * Serigrafía secundaria.
+                 */
+                if (!legends.isEmpty()) {
+
+                    QFont legendFont =
+                        QApplication::font();
+
+                    legendFont.setPixelSize(12);
+                    legendFont.setBold(true);
+
+                    p.setFont(legendFont);
+                    p.setPen(secondaryColor);
+
+                    QFontMetrics legendMetrics(
+                        legendFont
+                    );
+
+                    const int legendCount =
+                        qMin(2, legends.size());
+
+                    const int rightMargin = 7;
+                    const int topMargin = 4;
+                    const int lineSpacing = 1;
+
+                    const int lineHeight =
+                        legendMetrics.height();
+
+                    for (int i = 0;
+                         i < legendCount;
+                         ++i) {
+
+                        const QString &legend =
+                            legends.at(i);
+
+                        const int textWidth =
+                            legendMetrics.horizontalAdvance(
                                 legend
                             );
 
-                        const int legendHeight =
-                            combinationMetrics.height();
-
-                        /*
-                         * Superíndice alineado a la derecha de SU
-                         * propia celda.
-                         *
-                         * El pequeño desplazamiento hacia arriba y
-                         * hacia la derecha da el aspecto de leyenda
-                         * física de una keycap real.
-                         */
-                        const qreal rightInset = 1.0;
-                        const qreal topInset = 3.0;
-
                         QRectF legendRect(
-                            componentCell.right()
-                                - legendWidth
-                                + rightInset,
-                            componentCell.top()
-                                + topInset,
-                            legendWidth,
-                            legendHeight
+                            keyRect.right()
+                                - rightMargin
+                                - textWidth,
+                            keyRect.top()
+                                + topMargin
+                                + i *
+                                  (lineHeight +
+                                   lineSpacing),
+                            textWidth,
+                            lineHeight
                         );
 
                         p.drawText(
@@ -968,24 +822,196 @@ protected:
                             legend
                         );
                     }
-
-                    /*
-                     * Siguiente celda virtual.
-                     */
-                    componentX += componentWidth;
-
-                    if (i + 1 < parts.size())
-                        componentX += separatorWidth;
                 }
+
+                /*
+                 * Leyenda principal.
+                 */
+                p.setFont(mainFont);
+                p.setPen(textColor);
+
+                QRectF primaryRect =
+                    keyRect;
+
+                if (!legends.isEmpty()) {
+
+                    primaryRect.adjust(
+                        0,
+                        3,
+                        0,
+                        2
+                    );
+                }
+
+                p.drawText(
+                    primaryRect,
+                    Qt::AlignCenter,
+                    text
+                );
+            };
+
+            /*
+             * -------------------------------------------------------
+             * COMBINACIÓN
+             * -------------------------------------------------------
+             */
+
+            if (entry.combination &&
+                entry.keys.size() > 1) {
+
+                QFontMetrics mainMetrics(mainFont);
+
+                const QString separator =
+                    QStringLiteral("+");
+
+                const int separatorWidth =
+                    mainMetrics.horizontalAdvance(
+                        separator
+                    );
+
+                const int separatorGap = 8;
+
+                QVector<QString> components;
+                QVector<int> componentWidths;
+                QVector<QStringList> componentLegends;
+
+                int totalWidth = 0;
+
+                for (int i = 0;
+                     i < entry.keys.size();
+                     ++i) {
+
+                    const QString component =
+                        compactMode
+                            ? compactDisplayName(
+                                entry.keys.at(i)
+                              )
+                            : entry.keys.at(i);
+
+                    const int textWidth =
+                        mainMetrics.horizontalAdvance(
+                            component
+                        );
+
+                    const int componentWidth =
+                        qMax(
+                            minimumBoxWidth,
+                            textWidth + 28
+                        );
+
+                    components.append(component);
+                    componentWidths.append(componentWidth);
+
+                    QStringList legends;
+
+                    if (i < draw.keySecondary.size()) {
+
+                        const QString legend =
+                            draw.keySecondary.at(i);
+
+                        if (!legend.isEmpty())
+                            legends.append(legend);
+                    }
+
+                    componentLegends.append(legends);
+
+                    totalWidth += componentWidth;
+
+                    if (i + 1 < entry.keys.size()) {
+
+                        totalWidth +=
+                            separatorGap * 2 +
+                            separatorWidth;
+                    }
+                }
+
+                qreal componentX =
+                    x +
+                    (draw.width - totalWidth) / 2.0;
+
+                /*
+                 * Si por alguna razón el ancho calculado supera
+                 * ligeramente el espacio reservado, lo centramos
+                 * igualmente dentro de la entrada.
+                 */
+                for (int i = 0;
+                     i < components.size();
+                     ++i) {
+
+                    QRectF componentRect(
+                        componentX,
+                        top,
+                        componentWidths.at(i),
+                        boxHeight
+                    );
+
+                    drawKeycap(
+                        componentRect,
+                        components.at(i),
+                        componentLegends.at(i),
+                        true
+                    );
+
+                    componentX +=
+                        componentWidths.at(i);
+
+                    if (i + 1 <
+                        components.size()) {
+
+                        /*
+                         * Separador +.
+                         */
+                        componentX += separatorGap;
+
+                        p.setFont(mainFont);
+                        p.setPen(secondaryColor);
+
+                        QRectF plusRect(
+                            componentX,
+                            top,
+                            separatorWidth,
+                            boxHeight
+                        );
+
+                        p.drawText(
+                            plusRect,
+                            Qt::AlignCenter,
+                            separator
+                        );
+
+                        componentX +=
+                            separatorWidth +
+                            separatorGap;
+                    }
+                }
+
+            } else {
+
+                /*
+                 * ---------------------------------------------------
+                 * TECLA INDIVIDUAL
+                 * ---------------------------------------------------
+                 */
+
+                QRectF r(
+                    x,
+                    top,
+                    draw.width,
+                    boxHeight
+                );
+
+                drawKeycap(
+                    r,
+                    draw.primary,
+                    draw.secondary,
+                    false
+                );
             }
 
             /*
              * -------------------------------------------------------
              * Burbuja de repetición
              * -------------------------------------------------------
-             *
-             * El contador vive fuera de la keycap para no interferir
-             * con las leyendas físicas de la tecla.
              */
 
             if (entry.repeatCount > 1) {
@@ -997,42 +1023,23 @@ protected:
                 QFont badgeFont =
                     QApplication::font();
 
-                /*
-                 * Texto de la burbuja ligeramente mayor para mejorar
-                 * la legibilidad.
-                 */
                 badgeFont.setPixelSize(11);
                 badgeFont.setBold(true);
 
-                QFontMetrics badgeMetrics(badgeFont);
+                QFontMetrics badgeMetrics(
+                    badgeFont
+                );
 
                 const int badgeWidth =
                     qMax(
                         24,
-                        badgeMetrics.horizontalAdvance(countText) + 12
+                        badgeMetrics.horizontalAdvance(
+                            countText
+                        ) + 12
                     );
 
                 const int badgeHeight = 19;
 
-                /*
-                 * ---------------------------------------------------
-                 * Micro-lupa de entrada
-                 * ---------------------------------------------------
-                 *
-                 * La burbuja aparece ligeramente ampliada y vuelve
-                 * rápidamente a su tamaño normal.
-                 *
-                 * Es deliberadamente sutil para conservar el aspecto
-                 * elegante de una notificación de interfaz.
-                 */
-                /*
-                 * Micro-lupa ligeramente más visible:
-                 *
-                 * 118 % al aparecer → 100 % al asentarse.
-                 *
-                 * La animación sigue siendo breve para conservar
-                 * el aspecto elegante de una notificación.
-                 */
                 const qreal badgeScale =
                     age < 140
                         ? 1.0 +
@@ -1045,39 +1052,19 @@ protected:
                            ))
                         : 1.0;
 
-                const qreal normalBadgeWidth =
-                    badgeWidth;
-
-                const qreal normalBadgeHeight =
-                    badgeHeight;
-
                 const qreal scaledBadgeWidth =
-                    normalBadgeWidth * badgeScale;
+                    badgeWidth * badgeScale;
 
                 const qreal scaledBadgeHeight =
-                    normalBadgeHeight * badgeScale;
+                    badgeHeight * badgeScale;
 
-                /*
-                 * Mantenemos la esquina superior izquierda como
-                 * referencia para que la burbuja no "salte" durante
-                 * la animación.
-                 */
                 QRectF badgeRect(
-                    r.left() - 5,
-                    r.top() - 7,
+                    x - 5,
+                    top - 7,
                     scaledBadgeWidth,
                     scaledBadgeHeight
                 );
 
-                /*
-                 * ---------------------------------------------------
-                 * Sombra exterior.
-                 * ---------------------------------------------------
-                 */
-
-                /*
-                 * Sombra exterior.
-                 */
                 QRectF badgeShadow =
                     badgeRect.adjusted(
                         0,
@@ -1103,9 +1090,6 @@ protected:
                     8.5
                 );
 
-                /*
-                 * Fondo tipo "pill" translúcido.
-                 */
                 QLinearGradient badgeGradient(
                     badgeRect.topLeft(),
                     badgeRect.bottomLeft()
@@ -1139,9 +1123,6 @@ protected:
                     8.5
                 );
 
-                /*
-                 * Borde muy fino.
-                 */
                 p.setBrush(Qt::NoBrush);
 
                 p.setPen(
@@ -1167,9 +1148,6 @@ protected:
                     8
                 );
 
-                /*
-                 * Texto.
-                 */
                 p.setFont(badgeFont);
 
                 p.setPen(
@@ -1188,36 +1166,6 @@ protected:
                 );
             }
 
-            /*
-             * -------------------------------------------------------
-             * Leyenda principal
-             * -------------------------------------------------------
-             */
-
-            p.setFont(mainFont);
-            p.setPen(textColor);
-
-            QRectF primaryRect = r;
-
-            if (!draw.secondary.isEmpty()) {
-
-                /*
-                 * Dejamos espacio visual para la leyenda secundaria.
-                 */
-                primaryRect.adjust(
-                    0,
-                    3,
-                    0,
-                    2
-                );
-            }
-
-            p.drawText(
-                primaryRect,
-                Qt::AlignCenter,
-                draw.primary
-            );
-
             p.restore();
 
             x +=
@@ -1226,6 +1174,1155 @@ protected:
         }
     }
 
+
+private:
+
+    /*
+     * -----------------------------------------------------------
+     * ESTADO REAL MULTIMEDIA
+     * -----------------------------------------------------------
+     *
+     * El icono no representa simplemente la última tecla pulsada.
+     * Se sincroniza con:
+     *
+     *   MPRIS -> PlaybackStatus
+     *   PipeWire -> estado de mute del sink por defecto
+     *
+     * De esta forma también detectamos cambios hechos con el ratón,
+     * botones del reproductor, auriculares, etc.
+     */
+    /*
+     * -----------------------------------------------------------
+     * ESTADOS REALES DEL SISTEMA
+     * -----------------------------------------------------------
+     *
+     * Las tarjetas multimedia/hardware no dependen únicamente de
+     * la última tecla pulsada. Consultamos el estado real:
+     *
+     *   MPRIS       -> reproducción / repeat / shuffle
+     *   PipeWire    -> volumen / mute / micrófono
+     *   NetworkMgr  -> Wi-Fi / WWAN
+     *   BlueZ       -> Bluetooth
+     *   rfkill      -> estado de radios
+     *   backlight   -> brillo
+     *   KWin        -> touchpad
+     *
+     * Esto permite que el overlay se actualice incluso cuando el
+     * usuario cambia el estado desde Plasma, el reproductor, etc.
+     */
+
+    QString mprisPlaybackStatus =
+        QStringLiteral("Stopped");
+
+    QString mprisLoopStatus =
+        QStringLiteral("None");
+
+    bool mprisShuffle = false;
+
+    bool realAudioMuted = false;
+    int realAudioVolumePercent = 0;
+
+    bool realMicMuted = false;
+    int realMicVolumePercent = 0;
+
+    bool wifiEnabled = false;
+    bool wifiHardwareEnabled = true;
+    bool wifiStateKnown = false;
+
+    bool wwanEnabled = false;
+    bool wwanHardwareEnabled = true;
+    bool wwanStateKnown = false;
+
+    bool bluetoothPowered = false;
+    bool bluetoothStateKnown = false;
+
+    bool allRadiosEnabled = true;
+    bool rfkillStateKnown = false;
+
+    int brightnessPercent = 0;
+    bool brightnessStateKnown = false;
+
+    bool touchpadEnabled = true;
+    bool touchpadStateKnown = false;
+
+    QTimer mediaStateTimer;
+
+    void updateMediaState()
+    {
+        /*
+         * -------------------------------------------------------
+         * Helper D-Bus genérico
+         * -------------------------------------------------------
+         */
+
+        auto readDBusProperty =
+            [](const QDBusConnection &bus,
+               const QString &service,
+               const QString &path,
+               const QString &interface,
+               const QString &property) -> QVariant {
+
+                QDBusInterface props(
+                    service,
+                    path,
+                    QStringLiteral(
+                        "org.freedesktop.DBus.Properties"
+                    ),
+                    bus
+                );
+
+                if (!props.isValid())
+                    return QVariant();
+
+                const QDBusMessage reply =
+                    props.call(
+                        QStringLiteral("Get"),
+                        interface,
+                        property
+                    );
+
+                if (reply.type() !=
+                    QDBusMessage::ReplyMessage) {
+
+                    return QVariant();
+                }
+
+                const QList<QVariant> args =
+                    reply.arguments();
+
+                if (args.isEmpty())
+                    return QVariant();
+
+                const QVariant outer =
+                    args.first();
+
+                if (!outer.canConvert<QDBusVariant>())
+                    return QVariant();
+
+                return qvariant_cast<QDBusVariant>(
+                    outer
+                ).variant();
+            };
+
+        /*
+         * -------------------------------------------------------
+         * MPRIS
+         * -------------------------------------------------------
+         */
+
+        QString playbackStatus =
+            QStringLiteral("Stopped");
+
+        QString loopStatus =
+            QStringLiteral("None");
+
+        bool shuffle = false;
+
+        QString activePlayer;
+
+        const QDBusConnection sessionBus =
+            QDBusConnection::sessionBus();
+
+        QDBusConnectionInterface *busInterface =
+            sessionBus.interface();
+
+        auto playerProperty =
+            [&](const QString &service,
+                const QString &property) -> QVariant {
+
+                return readDBusProperty(
+                    sessionBus,
+                    service,
+                    QStringLiteral(
+                        "/org/mpris/MediaPlayer2"
+                    ),
+                    QStringLiteral(
+                        "org.mpris.MediaPlayer2.Player"
+                    ),
+                    property
+                );
+            };
+
+        auto readPlayerStatus =
+            [&](const QString &service) -> QString {
+
+                return playerProperty(
+                    service,
+                    QStringLiteral("PlaybackStatus")
+                ).toString();
+            };
+
+        /*
+         * playerctld representa el reproductor activo/reciente
+         * cuando está disponible.
+         */
+        if (busInterface &&
+            busInterface->isServiceRegistered(
+                QStringLiteral(
+                    "org.mpris.MediaPlayer2.playerctld"
+                ))) {
+
+            const QString status =
+                readPlayerStatus(
+                    QStringLiteral(
+                        "org.mpris.MediaPlayer2.playerctld"
+                    )
+                );
+
+            if (status == QStringLiteral("Playing") ||
+                status == QStringLiteral("Paused") ||
+                status == QStringLiteral("Stopped")) {
+
+                activePlayer =
+                    QStringLiteral(
+                        "org.mpris.MediaPlayer2.playerctld"
+                    );
+
+                playbackStatus = status;
+            }
+        }
+
+        /*
+         * Fallback: buscamos un reproductor reproduciendo.
+         */
+        if (activePlayer.isEmpty() &&
+            busInterface) {
+
+            const QStringList services =
+                busInterface->registeredServiceNames();
+
+            QString pausedPlayer;
+
+            for (const QString &service : services) {
+
+                if (!service.startsWith(
+                        QStringLiteral(
+                            "org.mpris.MediaPlayer2."
+                        )
+                    )) {
+
+                    continue;
+                }
+
+                if (service ==
+                    QStringLiteral(
+                        "org.mpris.MediaPlayer2.playerctld"
+                    )) {
+
+                    continue;
+                }
+
+                const QString status =
+                    readPlayerStatus(service);
+
+                if (status == QStringLiteral("Playing")) {
+
+                    activePlayer = service;
+                    playbackStatus = status;
+                    break;
+                }
+
+                if (status == QStringLiteral("Paused") &&
+                    pausedPlayer.isEmpty()) {
+
+                    pausedPlayer = service;
+                }
+            }
+
+            if (activePlayer.isEmpty() &&
+                !pausedPlayer.isEmpty()) {
+
+                activePlayer = pausedPlayer;
+                playbackStatus =
+                    QStringLiteral("Paused");
+            }
+        }
+
+        if (!activePlayer.isEmpty()) {
+
+            const QString detectedLoop =
+                playerProperty(
+                    activePlayer,
+                    QStringLiteral("LoopStatus")
+                ).toString();
+
+            if (detectedLoop == QStringLiteral("None") ||
+                detectedLoop == QStringLiteral("Track") ||
+                detectedLoop == QStringLiteral("Playlist")) {
+
+                loopStatus = detectedLoop;
+            }
+
+            const QVariant shuffleValue =
+                playerProperty(
+                    activePlayer,
+                    QStringLiteral("Shuffle")
+                );
+
+            if (shuffleValue.isValid())
+                shuffle = shuffleValue.toBool();
+        }
+
+        mprisPlaybackStatus =
+            playbackStatus;
+
+        mprisLoopStatus =
+            loopStatus;
+
+        mprisShuffle =
+            shuffle;
+
+        /*
+         * -------------------------------------------------------
+         * PIPEWIRE / VOLUMEN + MUTE
+         * -------------------------------------------------------
+         *
+         * wpctl get-volume devuelve el volumen como 0.0 = 0%,
+         * 1.0 = 100%, y puede superar 1.0 si hay amplificación.
+         *
+         * También añade [MUTED] cuando el nodo está muteado.
+         */
+
+        auto readWpctlVolume =
+            [](const QString &node,
+               int &percent,
+               bool &muted) -> bool {
+
+                QProcess process;
+
+                process.start(
+                    QStringLiteral("wpctl"),
+                    QStringList{
+                        QStringLiteral("get-volume"),
+                        node
+                    }
+                );
+
+                if (!process.waitForFinished(120))
+                    return false;
+
+                if (process.exitStatus() !=
+                    QProcess::NormalExit ||
+                    process.exitCode() != 0) {
+
+                    return false;
+                }
+
+                const QString output =
+                    QString::fromLocal8Bit(
+                        process.readAllStandardOutput()
+                    ).trimmed();
+
+                if (output.isEmpty())
+                    return false;
+
+                static const QRegularExpression re(
+                    QStringLiteral(
+                        R"(Volume:\s*([0-9]+(?:\.[0-9]+)?))"
+                    )
+                );
+
+                const QRegularExpressionMatch match =
+                    re.match(output);
+
+                if (!match.hasMatch())
+                    return false;
+
+                bool ok = false;
+
+                const double volume =
+                    match.captured(1).toDouble(&ok);
+
+                if (!ok)
+                    return false;
+
+                percent =
+                    qRound(volume * 100.0);
+
+                muted =
+                    output.contains(
+                        QStringLiteral("[MUTED]")
+                    );
+
+                return true;
+            };
+
+        int sinkVolume = realAudioVolumePercent;
+        bool sinkMuted = realAudioMuted;
+
+        if (readWpctlVolume(
+                QStringLiteral(
+                    "@DEFAULT_AUDIO_SINK@"
+                ),
+                sinkVolume,
+                sinkMuted)) {
+
+            realAudioVolumePercent =
+                sinkVolume;
+
+            realAudioMuted =
+                sinkMuted;
+        }
+
+        int sourceVolume =
+            realMicVolumePercent;
+
+        bool sourceMuted =
+            realMicMuted;
+
+        if (readWpctlVolume(
+                QStringLiteral(
+                    "@DEFAULT_AUDIO_SOURCE@"
+                ),
+                sourceVolume,
+                sourceMuted)) {
+
+            realMicVolumePercent =
+                sourceVolume;
+
+            realMicMuted =
+                sourceMuted;
+        }
+
+        /*
+         * -------------------------------------------------------
+         * NETWORKMANAGER / WIFI + WWAN
+         * -------------------------------------------------------
+         *
+         * NetworkManager diferencia:
+         *
+         *   WirelessEnabled
+         *   WirelessHardwareEnabled
+         *
+         * y lo mismo para WWAN.
+         *
+         * El segundo indica además si existe un bloqueo RF físico.
+         */
+
+        const QDBusConnection systemBus =
+            QDBusConnection::systemBus();
+
+        const QString nmService =
+            QStringLiteral(
+                "org.freedesktop.NetworkManager"
+            );
+
+        const QString nmPath =
+            QStringLiteral(
+                "/org/freedesktop/NetworkManager"
+            );
+
+        const QString nmInterface =
+            QStringLiteral(
+                "org.freedesktop.NetworkManager"
+            );
+
+        const QVariant networking =
+            readDBusProperty(
+                systemBus,
+                nmService,
+                nmPath,
+                nmInterface,
+                QStringLiteral(
+                    "NetworkingEnabled"
+                )
+            );
+
+        const QVariant nmWifi =
+            readDBusProperty(
+                systemBus,
+                nmService,
+                nmPath,
+                nmInterface,
+                QStringLiteral(
+                    "WirelessEnabled"
+                )
+            );
+
+        const QVariant nmWifiHw =
+            readDBusProperty(
+                systemBus,
+                nmService,
+                nmPath,
+                nmInterface,
+                QStringLiteral(
+                    "WirelessHardwareEnabled"
+                )
+            );
+
+        if (networking.isValid() &&
+            nmWifi.isValid() &&
+            nmWifiHw.isValid()) {
+
+            wifiEnabled =
+                networking.toBool() &&
+                nmWifi.toBool();
+
+            wifiHardwareEnabled =
+                nmWifiHw.toBool();
+
+            wifiStateKnown = true;
+        }
+
+        const QVariant nmWwan =
+            readDBusProperty(
+                systemBus,
+                nmService,
+                nmPath,
+                nmInterface,
+                QStringLiteral(
+                    "WwanEnabled"
+                )
+            );
+
+        const QVariant nmWwanHw =
+            readDBusProperty(
+                systemBus,
+                nmService,
+                nmPath,
+                nmInterface,
+                QStringLiteral(
+                    "WwanHardwareEnabled"
+                )
+            );
+
+        if (networking.isValid() &&
+            nmWwan.isValid() &&
+            nmWwanHw.isValid()) {
+
+            wwanEnabled =
+                networking.toBool() &&
+                nmWwan.toBool();
+
+            wwanHardwareEnabled =
+                nmWwanHw.toBool();
+
+            wwanStateKnown = true;
+        }
+
+        /*
+         * -------------------------------------------------------
+         * BLUETOOTH / BLUEZ
+         * -------------------------------------------------------
+         *
+         * Consultamos los adaptadores hci* y su propiedad Powered.
+         */
+
+        bool foundBluetooth =
+            false;
+
+        bool anyBluetoothPowered =
+            false;
+
+        const QStringList bluetoothAdapters =
+            QDir(
+                QStringLiteral(
+                    "/sys/class/bluetooth"
+                )
+            ).entryList(
+                QStringList{
+                    QStringLiteral("hci*")
+                },
+                QDir::Dirs |
+                QDir::NoDotAndDotDot
+            );
+
+        for (const QString &adapter :
+             bluetoothAdapters) {
+
+            const QVariant powered =
+                readDBusProperty(
+                    systemBus,
+                    QStringLiteral("org.bluez"),
+                    QStringLiteral(
+                        "/org/bluez/"
+                    ) + adapter,
+                    QStringLiteral(
+                        "org.bluez.Adapter1"
+                    ),
+                    QStringLiteral("Powered")
+                );
+
+            if (!powered.isValid())
+                continue;
+
+            foundBluetooth = true;
+
+            if (powered.toBool())
+                anyBluetoothPowered = true;
+        }
+
+        if (foundBluetooth) {
+
+            bluetoothPowered =
+                anyBluetoothPowered;
+
+            bluetoothStateKnown =
+                true;
+        }
+
+        /*
+         * -------------------------------------------------------
+         * RFKILL
+         * -------------------------------------------------------
+         *
+         * Si cualquier radio registrado está bloqueado, el estado
+         * global no está completamente habilitado.
+         */
+
+        bool foundRfkill =
+            false;
+
+        bool blockedRadio =
+            false;
+
+        const QDir rfkillDir(
+            QStringLiteral(
+                "/sys/class/rfkill"
+            )
+        );
+
+        const QStringList rfkillEntries =
+            rfkillDir.entryList(
+                QStringList{
+                    QStringLiteral("rfkill*")
+                },
+                QDir::Dirs |
+                QDir::NoDotAndDotDot
+            );
+
+        for (const QString &entry :
+             rfkillEntries) {
+
+            const QString base =
+                rfkillDir.filePath(entry);
+
+            QFile hardFile(
+                base +
+                QStringLiteral("/hard")
+            );
+
+            QFile softFile(
+                base +
+                QStringLiteral("/soft")
+            );
+
+            if (!hardFile.open(QIODevice::ReadOnly))
+                continue;
+
+            if (!softFile.open(QIODevice::ReadOnly))
+                continue;
+
+            const int hard =
+                hardFile.readAll()
+                    .trimmed()
+                    .toInt();
+
+            const int soft =
+                softFile.readAll()
+                    .trimmed()
+                    .toInt();
+
+            foundRfkill = true;
+
+            if (hard != 0 ||
+                soft != 0) {
+
+                blockedRadio = true;
+            }
+        }
+
+        if (foundRfkill) {
+
+            allRadiosEnabled =
+                !blockedRadio;
+
+            rfkillStateKnown =
+                true;
+        }
+
+        /*
+         * -------------------------------------------------------
+         * BRILLO
+         * -------------------------------------------------------
+         *
+         * /sys/class/backlight/<device>/brightness
+         * /sys/class/backlight/<device>/max_brightness
+         */
+
+        const QDir backlightDir(
+            QStringLiteral(
+                "/sys/class/backlight"
+            )
+        );
+
+        const QStringList backlights =
+            backlightDir.entryList(
+                QDir::Dirs |
+                QDir::NoDotAndDotDot
+            );
+
+        int selectedBrightness =
+            -1;
+
+        int selectedMaximum =
+            -1;
+
+        for (const QString &device :
+             backlights) {
+
+            const QString base =
+                backlightDir.filePath(device);
+
+            QFile brightnessFile(
+                base +
+                QStringLiteral("/brightness")
+            );
+
+            QFile maximumFile(
+                base +
+                QStringLiteral("/max_brightness")
+            );
+
+            if (!brightnessFile.open(
+                    QIODevice::ReadOnly
+                )) {
+
+                continue;
+            }
+
+            if (!maximumFile.open(
+                    QIODevice::ReadOnly
+                )) {
+
+                continue;
+            }
+
+            bool okBrightness = false;
+            bool okMaximum = false;
+
+            const int current =
+                QString::fromLatin1(
+                    brightnessFile.readAll()
+                ).trimmed().toInt(
+                    &okBrightness
+                );
+
+            const int maximum =
+                QString::fromLatin1(
+                    maximumFile.readAll()
+                ).trimmed().toInt(
+                    &okMaximum
+                );
+
+            if (!okBrightness ||
+                !okMaximum ||
+                maximum <= 0) {
+
+                continue;
+            }
+
+            selectedBrightness = current;
+            selectedMaximum = maximum;
+
+            /*
+             * Normalmente solo existe un backlight. Si hay varios,
+             * usamos el primero válido.
+             */
+            break;
+        }
+
+        if (selectedMaximum > 0) {
+
+            brightnessPercent =
+                qRound(
+                    100.0 *
+                    static_cast<double>(
+                        selectedBrightness
+                    ) /
+                    static_cast<double>(
+                        selectedMaximum
+                    )
+                );
+
+            brightnessPercent =
+                qBound(
+                    0,
+                    brightnessPercent,
+                    100
+                );
+
+            brightnessStateKnown =
+                true;
+        }
+
+        /*
+         * -------------------------------------------------------
+         * TOUCHPAD / KWIN
+         * -------------------------------------------------------
+         *
+         * KWin expone los dispositivos de entrada por D-Bus.
+         * Buscamos los que tienen touchpad == true y leemos
+         * enabled.
+         */
+
+        QDBusInterface kwinManager(
+            QStringLiteral("org.kde.KWin"),
+            QStringLiteral(
+                "/org/kde/KWin/InputDevice"
+            ),
+            QStringLiteral(
+                "org.freedesktop.DBus.Properties"
+            ),
+            sessionBus
+        );
+
+        if (kwinManager.isValid()) {
+
+            const QDBusMessage reply =
+                kwinManager.call(
+                    QStringLiteral("Get"),
+                    QStringLiteral(
+                        "org.kde.KWin.InputDeviceManager"
+                    ),
+                    QStringLiteral(
+                        "devicesSysNames"
+                    )
+                );
+
+            if (reply.type() ==
+                    QDBusMessage::ReplyMessage &&
+                !reply.arguments().isEmpty()) {
+
+                const QVariant outer =
+                    reply.arguments().first();
+
+                if (outer.canConvert<QDBusVariant>()) {
+
+                    const QVariant devicesVariant =
+                        qvariant_cast<QDBusVariant>(
+                            outer
+                        ).variant();
+
+                    const QStringList devices =
+                        devicesVariant.toStringList();
+
+                    bool foundTouchpad =
+                        false;
+
+                    bool enabled =
+                        true;
+
+                    for (const QString &device :
+                         devices) {
+
+                        const QString path =
+                            QStringLiteral(
+                                "/org/kde/KWin/InputDevice/"
+                            ) +
+                            device;
+
+                        const QVariant isTouchpad =
+                            readDBusProperty(
+                                sessionBus,
+                                QStringLiteral(
+                                    "org.kde.KWin"
+                                ),
+                                path,
+                                QStringLiteral(
+                                    "org.kde.KWin.InputDevice"
+                                ),
+                                QStringLiteral(
+                                    "touchpad"
+                                )
+                            );
+
+                        if (!isTouchpad.isValid() ||
+                            !isTouchpad.toBool()) {
+
+                            continue;
+                        }
+
+                        const QVariant deviceEnabled =
+                            readDBusProperty(
+                                sessionBus,
+                                QStringLiteral(
+                                    "org.kde.KWin"
+                                ),
+                                path,
+                                QStringLiteral(
+                                    "org.kde.KWin.InputDevice"
+                                ),
+                                QStringLiteral(
+                                    "enabled"
+                                )
+                            );
+
+                        if (!deviceEnabled.isValid())
+                            continue;
+
+                        foundTouchpad = true;
+
+                        if (!deviceEnabled.toBool()) {
+                            enabled = false;
+                            break;
+                        }
+                    }
+
+                    if (foundTouchpad) {
+
+                        touchpadEnabled =
+                            enabled;
+
+                        touchpadStateKnown =
+                            true;
+                    }
+                }
+            }
+        }
+
+        /*
+         * -------------------------------------------------------
+         * ACTUALIZAR ENTRADAS VISIBLES
+         * -------------------------------------------------------
+         *
+         * Las tarjetas que siguen en pantalla se sincronizan con
+         * el estado real aunque el cambio haya ocurrido fuera de
+         * KeyCast.
+         */
+
+        const QString volumeText =
+            QStringLiteral(
+                "%1 %2%"
+            ).arg(
+                realAudioMuted
+                    ? QStringLiteral("🔇")
+                    : QStringLiteral("🔊")
+            ).arg(
+                realAudioVolumePercent
+            );
+
+        const QString micText =
+            QStringLiteral(
+                "%1 %2%"
+            ).arg(
+                realMicMuted
+                    ? QStringLiteral("🔇")
+                    : QStringLiteral("🎙")
+            ).arg(
+                realMicVolumePercent
+            );
+
+        const QString playbackText =
+            mprisPlaybackStatus ==
+                QStringLiteral("Playing")
+                ? QStringLiteral("Ⅱ")
+                : QStringLiteral("▶");
+
+        QString repeatText =
+            QStringLiteral("↻");
+
+        if (mprisLoopStatus ==
+            QStringLiteral("Playlist")) {
+
+            repeatText =
+                QStringLiteral("↻∞");
+
+        } else if (mprisLoopStatus ==
+                   QStringLiteral("None")) {
+
+            repeatText =
+                QStringLiteral("↻");
+        }
+
+        const QString shuffleText =
+            mprisShuffle
+                ? QStringLiteral("🔀")
+                : QStringLiteral("⇄");
+
+        const QString brightnessText =
+            QStringLiteral(
+                "☀ %1%"
+            ).arg(
+                brightnessPercent
+            );
+
+        const QString wifiText =
+            wifiEnabled &&
+            wifiHardwareEnabled
+                ? QStringLiteral("📶")
+                : QStringLiteral("⊘");
+
+        const QString wwanText =
+            wwanEnabled &&
+            wwanHardwareEnabled
+                ? QStringLiteral("📡")
+                : QStringLiteral("⊘");
+
+        const QString bluetoothText =
+            bluetoothPowered
+                ? QStringLiteral("ᛒ")
+                : QStringLiteral("⊘");
+
+        const QString rfkillText =
+            allRadiosEnabled
+                ? QStringLiteral("📡")
+                : QStringLiteral("⊘");
+
+        const QString touchpadText =
+            touchpadEnabled
+                ? QStringLiteral("⌁")
+                : QStringLiteral("⊘");
+
+        for (auto &entry :
+             visualQueue) {
+
+            /*
+             * Mute / volumen
+             */
+            if (entry.linuxKeyCode == 113 ||
+                entry.linuxKeyCode == 114 ||
+                entry.linuxKeyCode == 115) {
+
+                entry.keys =
+                    QStringList{
+                        volumeText
+                    };
+            }
+
+            /*
+             * Mic mute
+             */
+            if (entry.linuxKeyCode == 248) {
+
+                entry.keys =
+                    QStringList{
+                        micText
+                    };
+            }
+
+            /*
+             * Play/Pause
+             */
+            if (entry.linuxKeyCode == 164 ||
+                entry.linuxKeyCode == 207) {
+
+                entry.keys =
+                    QStringList{
+                        playbackText
+                    };
+            }
+
+            /*
+             * Repeat
+             */
+            if (entry.linuxKeyCode == 439) {
+
+                entry.keys =
+                    QStringList{
+                        repeatText
+                    };
+            }
+
+            /*
+             * Shuffle
+             */
+            if (entry.linuxKeyCode == 410) {
+
+                entry.keys =
+                    QStringList{
+                        shuffleText
+                    };
+            }
+
+            /*
+             * Brillo:
+             *
+             * 224 = KEY_BRIGHTNESSDOWN
+             * 225 = KEY_BRIGHTNESSUP
+             * 243 = KEY_BRIGHTNESS_CYCLE
+             * 592 = KEY_BRIGHTNESS_MIN
+             * 593 = KEY_BRIGHTNESS_MAX
+             */
+            if (entry.linuxKeyCode == 224 ||
+                entry.linuxKeyCode == 225 ||
+                entry.linuxKeyCode == 243 ||
+                entry.linuxKeyCode == 592 ||
+                entry.linuxKeyCode == 593) {
+
+                entry.keys =
+                    QStringList{
+                        brightnessText
+                    };
+            }
+
+            /*
+             * Wi-Fi
+             */
+            if (entry.linuxKeyCode == 238 &&
+                wifiStateKnown) {
+
+                entry.keys =
+                    QStringList{
+                        wifiText
+                    };
+            }
+
+            /*
+             * WWAN
+             */
+            if (entry.linuxKeyCode == 246 &&
+                wwanStateKnown) {
+
+                entry.keys =
+                    QStringList{
+                        wwanText
+                    };
+            }
+
+            /*
+             * Bluetooth
+             */
+            if (entry.linuxKeyCode == 237 &&
+                bluetoothStateKnown) {
+
+                entry.keys =
+                    QStringList{
+                        bluetoothText
+                    };
+            }
+
+            /*
+             * RFKill
+             */
+            if (entry.linuxKeyCode == 247 &&
+                rfkillStateKnown) {
+
+                entry.keys =
+                    QStringList{
+                        rfkillText
+                    };
+            }
+
+            /*
+             * Touchpad:
+             *
+             * 530 = TOGGLE
+             * 531 = ON
+             * 532 = OFF
+             */
+            if ((entry.linuxKeyCode == 530 ||
+                 entry.linuxKeyCode == 531 ||
+                 entry.linuxKeyCode == 532) &&
+                touchpadStateKnown) {
+
+                entry.keys =
+                    QStringList{
+                        touchpadText
+                    };
+            }
+        }
+    }
 
 private:
 
@@ -1289,6 +2386,21 @@ private:
 {
     if (sym == XKB_KEY_NoSymbol)
         return QString();
+    char debugName[128] {};
+
+    xkb_keysym_get_name(
+        sym,
+        debugName,
+        sizeof(debugName)
+    );
+
+    qDebug()
+        << "keysymToText:"
+        << Qt::hex
+        << static_cast<uint32_t>(sym)
+        << Qt::dec
+        << debugName;
+
 
     /*
      * ---------------------------------------------------------------
@@ -1418,6 +2530,107 @@ private:
 
     case XKB_KEY_dead_tilde:
         return QStringLiteral("~");
+
+    default:
+        break;
+    }
+    /*
+     * ---------------------------------------------------------------
+     * Teclas XF86 / multimedia / hardware
+     * ---------------------------------------------------------------
+     *
+     * Estas teclas tienen keysym XKB pero no representan un carácter
+     * Unicode. Usamos leyendas cortas para que encajen bien en las
+     * teclas del overlay.
+     */
+    switch (sym) {
+
+    case XKB_KEY_XF86HomePage:
+        return QStringLiteral("⌂");
+
+    case XKB_KEY_XF86Back:
+        return QStringLiteral("↩");
+
+    case XKB_KEY_XF86MonBrightnessUp:
+        return QStringLiteral("☀+");
+
+    case XKB_KEY_XF86MonBrightnessDown:
+        return QStringLiteral("☀−");
+
+    case XKB_KEY_XF86MonBrightnessCycle:
+        return QStringLiteral("☀↻");
+
+    case XKB_KEY_XF86AudioLowerVolume:
+        return QStringLiteral("🔉");
+
+    case XKB_KEY_XF86AudioRaiseVolume:
+        return QStringLiteral("🔊");
+
+    case XKB_KEY_XF86AudioMute:
+        return QStringLiteral("🔇");
+
+    case XKB_KEY_XF86AudioMicMute:
+        return QStringLiteral("🎙×");
+
+    case XKB_KEY_XF86AudioPlay:
+        return QStringLiteral("▶");
+
+    case XKB_KEY_XF86AudioPause:
+        return QStringLiteral("Ⅱ");
+
+    case XKB_KEY_XF86AudioStop:
+        return QStringLiteral("■");
+
+    case XKB_KEY_XF86AudioPrev:
+        return QStringLiteral("◀|");
+
+    case XKB_KEY_XF86AudioNext:
+        return QStringLiteral("|▶");
+
+    case XKB_KEY_XF86AudioRewind:
+        return QStringLiteral("◀◀");
+
+    case XKB_KEY_XF86AudioForward:
+        return QStringLiteral("▶▶");
+
+    case XKB_KEY_XF86AudioRepeat:
+        return QStringLiteral("↻");
+
+    case XKB_KEY_XF86AudioRandomPlay:
+        return QStringLiteral("🔀");
+
+    case XKB_KEY_XF86Bluetooth:
+        return QStringLiteral("ᛒ");
+
+    case XKB_KEY_XF86WLAN:
+        return QStringLiteral("⌁");
+
+    case XKB_KEY_XF86TouchpadToggle:
+        return QStringLiteral("▣");
+
+    case XKB_KEY_XF86TouchpadOn:
+        return QStringLiteral("▣ ON");
+
+    case XKB_KEY_XF86TouchpadOff:
+        return QStringLiteral("▣ OFF");
+
+    case XKB_KEY_XF86CameraFocus:
+        return QStringLiteral("◎");
+
+    case XKB_KEY_XF86CameraZoomIn:
+        return QStringLiteral("⌕+");
+
+    case XKB_KEY_XF86CameraZoomOut:
+        return QStringLiteral("⌕−");
+
+    case XKB_KEY_XF86CameraAccessEnable:
+        return QStringLiteral("●");
+
+    case XKB_KEY_XF86CameraAccessDisable:
+        return QStringLiteral("⊘");
+
+    case XKB_KEY_XF86CameraAccessToggle:
+        return QStringLiteral("◉");
 
     default:
         break;
@@ -3006,10 +4219,11 @@ if (pressed) {
             keyName
         );
 
-    const QString visualName =
+    QString visualName =
         name.isEmpty()
             ? displayName(keyName)
             : name;
+
 
     /*
      * -----------------------------------------------------------
@@ -3118,6 +4332,219 @@ if (pressed) {
         }
 
         update();
+        continue;
+    }
+
+    /*
+     * -----------------------------------------------------------
+     * TECLAS CON ESTADO REAL
+     * -----------------------------------------------------------
+     *
+     * La tarjeta se crea con el estado actual. El timer de
+     * updateMediaState() la seguirá sincronizando mientras esté
+     * visible.
+     */
+
+    if (linuxKeyCode == 113 ||
+        linuxKeyCode == 114 ||
+        linuxKeyCode == 115) {
+
+        updateMediaState();
+
+        addVisualEntry(
+            QStringList{
+                realAudioMuted
+                    ? QStringLiteral("🔇 %1%")
+                          .arg(realAudioVolumePercent)
+                    : QStringLiteral("🔊 %1%")
+                          .arg(realAudioVolumePercent)
+            },
+            false,
+            linuxKeyCode
+        );
+
+        continue;
+    }
+
+    if (linuxKeyCode == 248) {
+
+        updateMediaState();
+
+        addVisualEntry(
+            QStringList{
+                realMicMuted
+                    ? QStringLiteral("🔇 %1%")
+                          .arg(realMicVolumePercent)
+                    : QStringLiteral("🎙 %1%")
+                          .arg(realMicVolumePercent)
+            },
+            false,
+            linuxKeyCode
+        );
+
+        continue;
+    }
+
+    if (linuxKeyCode == 164 ||
+        linuxKeyCode == 207) {
+
+        updateMediaState();
+
+        addVisualEntry(
+            QStringList{
+                mprisPlaybackStatus ==
+                    QStringLiteral("Playing")
+                    ? QStringLiteral("Ⅱ")
+                    : QStringLiteral("▶")
+            },
+            false,
+            linuxKeyCode
+        );
+
+        continue;
+    }
+
+    if (linuxKeyCode == 439) {
+
+        updateMediaState();
+
+        addVisualEntry(
+            QStringList{
+                mprisLoopStatus ==
+                    QStringLiteral("Playlist")
+                    ? QStringLiteral("↻∞")
+                    : QStringLiteral("↻")
+            },
+            false,
+            linuxKeyCode
+        );
+
+        continue;
+    }
+
+    if (linuxKeyCode == 410) {
+
+        updateMediaState();
+
+        addVisualEntry(
+            QStringList{
+                mprisShuffle
+                    ? QStringLiteral("🔀")
+                    : QStringLiteral("⇄")
+            },
+            false,
+            linuxKeyCode
+        );
+
+        continue;
+    }
+
+    if (linuxKeyCode == 224 ||
+        linuxKeyCode == 225 ||
+        linuxKeyCode == 243 ||
+        linuxKeyCode == 592 ||
+        linuxKeyCode == 593) {
+
+        updateMediaState();
+
+        addVisualEntry(
+            QStringList{
+                QStringLiteral("☀ %1%")
+                    .arg(brightnessPercent)
+            },
+            false,
+            linuxKeyCode
+        );
+
+        continue;
+    }
+
+    if (linuxKeyCode == 238) {
+
+        updateMediaState();
+
+        addVisualEntry(
+            QStringList{
+                wifiEnabled &&
+                wifiHardwareEnabled
+                    ? QStringLiteral("📶")
+                    : QStringLiteral("⊘")
+            },
+            false,
+            linuxKeyCode
+        );
+
+        continue;
+    }
+
+    if (linuxKeyCode == 246) {
+
+        updateMediaState();
+
+        addVisualEntry(
+            QStringList{
+                wwanEnabled &&
+                wwanHardwareEnabled
+                    ? QStringLiteral("📡")
+                    : QStringLiteral("⊘")
+            },
+            false,
+            linuxKeyCode
+        );
+
+        continue;
+    }
+
+    if (linuxKeyCode == 237) {
+
+        updateMediaState();
+
+        addVisualEntry(
+            QStringList{
+                bluetoothPowered
+                    ? QStringLiteral("ᛒ")
+                    : QStringLiteral("⊘")
+            },
+            false,
+            linuxKeyCode
+        );
+
+        continue;
+    }
+
+    if (linuxKeyCode == 247) {
+
+        updateMediaState();
+
+        addVisualEntry(
+            QStringList{
+                allRadiosEnabled
+                    ? QStringLiteral("📡")
+                    : QStringLiteral("⊘")
+            },
+            false,
+            linuxKeyCode
+        );
+
+        continue;
+    }
+
+    if (linuxKeyCode == 530 ||
+        linuxKeyCode == 531 ||
+        linuxKeyCode == 532) {
+
+        updateMediaState();
+
+        addVisualEntry(
+            QStringList{
+                touchpadEnabled
+                    ? QStringLiteral("⌁")
+                    : QStringLiteral("⊘")
+            },
+            false,
+            linuxKeyCode
+        );
+
         continue;
     }
 
