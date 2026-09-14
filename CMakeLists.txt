@@ -26,6 +26,17 @@ pkg_check_modules(WAYLAND REQUIRED
 
 add_executable(kde-keycast
     main.cpp
+
+    src/input/InputEvent.h
+    src/input/InputBackend.h
+    src/input/ShowMeTheKeyBackend.h
+
+    src/xkb/XkbKeyboard.h
+
+    src/mouse/MouseInput.h
+    src/mouse/WaylandPointer.h
+
+    src/ui/KeyCastWidget.h
 )
 
 target_include_directories(kde-keycast PRIVATE
@@ -45,7 +56,6 @@ target_compile_options(kde-keycast PRIVATE
 
 target_link_libraries(kde-keycast PRIVATE
     Qt6::Widgets
-    Qt6::DBus
     Qt6::DBus
     ${XKBCOMMON_LIBRARIES}
     ${WAYLAND_LIBRARIES}

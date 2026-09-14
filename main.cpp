@@ -1,3 +1,9 @@
+#include "src/mouse/WaylandPointer.h"
+#include <linux/input-event-codes.h>
+#include <functional>
+#include <algorithm>
+#include <cerrno>
+#include <cstring>
 #include <QApplication>
 #include <QWidget>
 #include <QPainter>
@@ -45,6 +51,334 @@ struct VisualEntry {
     int linuxKeyCode = -1;
 };
 
+
+
+class WaylandPointer
+{
+public:
+    WaylandPointer() = default;
+
+    ~WaylandPointer()
+    {
+        stop();
+    }
+
+    bool start(std::function<void(const QString &, bool)> callback)
+    {
+        if (display)
+            return true;
+
+        onButton = std::move(callback);
+
+        display = wl_display_connect(nullptr);
+        if (!display) {
+            qWarning() << "WaylandPointer: no se pudo conectar a Wayland";
+            return false;
+        }
+
+        registry = wl_display_get_registry(display);
+        if (!registry) {
+            stop();
+            return false;
+        }
+
+        static const wl_registry_listener listener = {
+            registryGlobal,
+            registryGlobalRemove
+        };
+
+        wl_registry_add_listener(registry, &listener, this);
+
+        if (wl_display_roundtrip(display) < 0) {
+            stop();
+            return false;
+        }
+
+        if (!seat) {
+            qWarning() << "WaylandPointer: no se encontró wl_seat";
+            stop();
+            return false;
+        }
+
+        pointer = wl_seat_get_pointer(seat);
+        if (!pointer) {
+            qWarning() << "WaylandPointer: no se pudo obtener wl_pointer";
+            stop();
+            return false;
+        }
+
+        static const wl_pointer_listener pointerListener = {
+            pointerEnter,
+            pointerLeave,
+            pointerMotion,
+            pointerButton,
+            pointerAxis,
+            pointerFrame,
+            pointerAxisSource,
+            pointerAxisStop,
+            pointerAxisDiscrete,
+            pointerAxisValue120,
+            pointerAxisRelativeDirection
+        };
+
+        wl_pointer_add_listener(pointer, &pointerListener, this);
+
+        if (wl_display_roundtrip(display) < 0) {
+            stop();
+            return false;
+        }
+
+        fd = wl_display_get_fd(display);
+        if (fd < 0) {
+            stop();
+            return false;
+        }
+
+        qDebug() << "WaylandPointer: activo";
+        return true;
+    }
+
+    void dispatch()
+    {
+        if (!display)
+            return;
+
+        if (wl_display_dispatch_pending(display) < 0) {
+            stop();
+            return;
+        }
+
+        if (wl_display_flush(display) < 0) {
+            if (errno != EAGAIN)
+                stop();
+        }
+    }
+
+    void stop()
+    {
+        if (pointer) {
+            wl_pointer_destroy(pointer);
+            pointer = nullptr;
+        }
+
+        if (seat) {
+            wl_seat_destroy(seat);
+            seat = nullptr;
+        }
+
+        if (registry) {
+            wl_registry_destroy(registry);
+            registry = nullptr;
+        }
+
+        if (display) {
+            wl_display_disconnect(display);
+            display = nullptr;
+        }
+
+        fd = -1;
+    }
+
+    int socketFd() const
+    {
+        return fd;
+    }
+
+private:
+    static void registryGlobal(
+        void *data,
+        wl_registry *registry,
+        uint32_t name,
+        const char *interface,
+        uint32_t version)
+    {
+        auto *self = static_cast<WaylandPointer *>(data);
+
+        if (std::strcmp(interface, wl_seat_interface.name) == 0) {
+            const uint32_t bindVersion = std::min(
+                version,
+                9u);
+
+            self->seat = static_cast<wl_seat *>(
+                wl_registry_bind(
+                    registry,
+                    name,
+                    &wl_seat_interface,
+                    bindVersion));
+        }
+    }
+
+    static void registryGlobalRemove(
+        void *,
+        wl_registry *,
+        uint32_t)
+    {
+    }
+
+    static void pointerEnter(
+        void *,
+        wl_pointer *,
+        uint32_t,
+        wl_surface *,
+        wl_fixed_t,
+        wl_fixed_t)
+    {
+    }
+
+    static void pointerLeave(
+        void *,
+        wl_pointer *,
+        uint32_t,
+        wl_surface *)
+    {
+    }
+
+    static void pointerMotion(
+        void *,
+        wl_pointer *,
+        uint32_t,
+        wl_fixed_t,
+        wl_fixed_t)
+    {
+    }
+
+    static void pointerButton(
+        void *data,
+        wl_pointer *,
+        uint32_t,
+        uint32_t,
+        uint32_t button,
+        uint32_t state)
+    {
+        auto *self = static_cast<WaylandPointer *>(data);
+
+        if (!self->onButton)
+            return;
+
+        QString name;
+
+        switch (button) {
+        case BTN_LEFT:
+            name = QStringLiteral("BTN_LEFT");
+            break;
+        case BTN_RIGHT:
+            name = QStringLiteral("BTN_RIGHT");
+            break;
+        case BTN_MIDDLE:
+            name = QStringLiteral("BTN_MIDDLE");
+            break;
+        case BTN_SIDE:
+            name = QStringLiteral("BTN_SIDE");
+            break;
+        case BTN_EXTRA:
+            name = QStringLiteral("BTN_EXTRA");
+            break;
+        default:
+            name = QStringLiteral("BTN_%1").arg(button);
+            break;
+        }
+
+        self->onButton(
+            name,
+            state == WL_POINTER_BUTTON_STATE_PRESSED);
+    }
+
+    static void pointerAxis(
+        void *data,
+        wl_pointer *,
+        uint32_t,
+        uint32_t axis,
+        wl_fixed_t value)
+    {
+        auto *self = static_cast<WaylandPointer *>(data);
+
+        if (!self->onButton)
+            return;
+
+        /*
+         * Wayland no expone la rueda como un "button".
+         * Convertimos cada movimiento de rueda en un evento visual.
+         *
+         * El signo sigue la convención estándar de Wayland:
+         * positivo = desplazamiento hacia abajo/derecha según el eje.
+         */
+        if (axis == WL_POINTER_AXIS_VERTICAL_SCROLL) {
+            if (value > 0) {
+                self->onButton(
+                    QStringLiteral("BTN_WHEEL_DOWN"),
+                    true);
+            } else if (value < 0) {
+                self->onButton(
+                    QStringLiteral("BTN_WHEEL_UP"),
+                    true);
+            }
+        } else if (axis == WL_POINTER_AXIS_HORIZONTAL_SCROLL) {
+            if (value > 0) {
+                self->onButton(
+                    QStringLiteral("BTN_WHEEL_RIGHT"),
+                    true);
+            } else if (value < 0) {
+                self->onButton(
+                    QStringLiteral("BTN_WHEEL_LEFT"),
+                    true);
+            }
+        }
+    }
+
+    static void pointerFrame(
+        void *,
+        wl_pointer *)
+    {
+    }
+
+    static void pointerAxisSource(
+        void *,
+        wl_pointer *,
+        uint32_t)
+    {
+    }
+
+    static void pointerAxisStop(
+        void *,
+        wl_pointer *,
+        uint32_t,
+        uint32_t)
+    {
+    }
+
+    static void pointerAxisDiscrete(
+        void *,
+        wl_pointer *,
+        uint32_t,
+        int32_t)
+    {
+    }
+
+    static void pointerAxisValue120(
+        void *,
+        wl_pointer *,
+        uint32_t,
+        int32_t)
+    {
+    }
+
+    static void pointerAxisRelativeDirection(
+        void *,
+        wl_pointer *,
+        uint32_t,
+        uint32_t)
+    {
+    }
+
+    wl_display *display = nullptr;
+    wl_registry *registry = nullptr;
+    wl_seat *seat = nullptr;
+    wl_pointer *pointer = nullptr;
+
+    int fd = -1;
+
+    std::function<void(const QString &, bool)> onButton;
+};
 
 class KeyCast : public QWidget
 {
@@ -115,9 +449,38 @@ public:
         setupWaylandKeyboard();
 
 
-        process.setProgram(
-            QStringLiteral("/usr/bin/showmethekey-cli")
-        );
+        {
+            const QString projectBackend =
+                QDir(QCoreApplication::applicationDirPath())
+                    .absoluteFilePath(
+                        QStringLiteral(
+                            "../vendor/showmethekey-cli/showmethekey-cli"
+                        )
+                    );
+
+            const QString systemBackend =
+                QStringLiteral(
+                    "/usr/bin/showmethekey-cli"
+                );
+
+            if (QFileInfo::exists(projectBackend) &&
+                QFileInfo(projectBackend).isExecutable()) {
+
+                process.setProgram(projectBackend);
+
+                qDebug()
+                    << "KDE KeyCast: usando backend extendido:"
+                    << projectBackend;
+
+            } else {
+
+                process.setProgram(systemBackend);
+
+                qDebug()
+                    << "KDE KeyCast: usando backend del sistema:"
+                    << systemBackend;
+            }
+        }
 
         connect(
             &process,
@@ -188,6 +551,7 @@ public:
 
     ~KeyCast()
     {
+        waylandPointer.stop();
         QSettings settings(
             QStringLiteral("KDE"),
             QStringLiteral("KDEKeyCast")
@@ -266,16 +630,16 @@ protected:
             return;
 
         QFont mainFont = QApplication::font();
-        mainFont.setPixelSize(19);
+        mainFont.setPixelSize(20);
         mainFont.setBold(true);
 
         QFont smallFont = QApplication::font();
-        smallFont.setPixelSize(10);
+        smallFont.setPixelSize(11);
         smallFont.setBold(true);
 
-        const int spacing = 8;
+        const int spacing = 10;
         const int sideMargin = 12;
-        const int boxHeight = 54;
+        const int boxHeight = 58;
         const int minimumBoxWidth = compactMode ? 42 : 46;
 
         const int top =
@@ -499,7 +863,7 @@ protected:
          */
 
         const QColor shadowColor(
-            0, 0, 0, 175
+            0, 0, 0, 190
         );
 
         const QColor deepShadow(
@@ -507,19 +871,19 @@ protected:
         );
 
         const QColor keyTop(
-            58, 60, 65, 255
+            64, 66, 72, 255
         );
 
         const QColor keyMiddle(
-            42, 44, 49, 255
+            43, 46, 52, 255
         );
 
         const QColor keyBottom(
-            27, 29, 33, 255
+            23, 25, 30, 255
         );
 
         const QColor edge(
-            255, 255, 255, 52
+            255, 255, 255, 68
         );
 
         const QColor edgeBottom(
@@ -527,7 +891,7 @@ protected:
         );
 
         const QColor highlight(
-            255, 255, 255, 28
+            255, 255, 255, 34
         );
 
         const QColor textColor(
@@ -539,7 +903,7 @@ protected:
         );
 
         const QColor combinationBorder(
-            255, 255, 255, 72
+            255, 255, 255, 88
         );
 
         /*
@@ -645,8 +1009,8 @@ protected:
 
                 p.drawRoundedRect(
                     deepRect,
-                    8,
-                    8
+                    10,
+                    10
                 );
 
                 /*
@@ -664,8 +1028,8 @@ protected:
 
                 p.drawRoundedRect(
                     shadowRect,
-                    8,
-                    8
+                    10,
+                    10
                 );
 
                 /*
@@ -696,8 +1060,8 @@ protected:
 
                 p.drawRoundedRect(
                     keyRect,
-                    8,
-                    8
+                    10,
+                    10
                 );
 
                 /*
@@ -724,8 +1088,8 @@ protected:
                         -0.5,
                         -0.5
                     ),
-                    8,
-                    8
+                    10,
+                    10
                 );
 
                 /*
@@ -3169,6 +3533,42 @@ private:
 
     static const wl_keyboard_listener keyboardListener;
 
+
+    void handleWaylandPointerEvent(
+        const KDEKeyCast::InputEvent &event)
+    {
+        if (!event.isMouse())
+            return;
+
+        if (event.action ==
+            KDEKeyCast::InputAction::Wheel) {
+
+            if (event.text.isEmpty())
+                return;
+
+            /*
+             * Reutilizamos el mismo camino visual que ya utiliza
+             * el proyecto para los eventos de ratón.
+             *
+             * No creamos un renderer diferente para la rueda:
+             * teclado, botones y rueda terminan en VisualEntry.
+             */
+            addMouseButton(event.text);
+            return;
+        }
+
+        /*
+         * Los botones físicos se incorporarán al mismo pipeline.
+         * De momento sólo mostramos pulsaciones.
+         */
+        if (event.action ==
+            KDEKeyCast::InputAction::Pressed) {
+
+            if (!event.keyName.isEmpty())
+                addMouseButton(event.keyName);
+        }
+    }
+
     void setupWaylandKeyboard()
     {
         display =
@@ -3232,6 +3632,21 @@ private:
          */
         keyboard =
             wl_seat_get_keyboard(seat);
+
+        if (!keyboard) {
+            qWarning()
+                << "Failed to obtain Wayland keyboard";
+            return;
+        }
+
+        if (!waylandPointer.start(
+                [this](const QString &keyName, bool pressed) {
+                    if (pressed)
+                        addMouseButton(keyName);
+                })) {
+            qWarning()
+                << "Failed to initialise Wayland pointer";
+        }
 
         if (!keyboard) {
 
@@ -3803,12 +4218,105 @@ private:
         const QString &keyName
     )
     {
+        const QString visualName =
+            displayName(keyName);
+
+        qDebug()
+            << "KDE KeyCast addMouseButton:"
+            << "input=" << keyName
+            << "display=" << visualName;
+
         addVisualEntry(
             QStringList{
-                displayName(keyName)
+                visualName
             },
             false
         );
+    }
+
+    void addMouseWheel(
+        const QString &axisName,
+        double axisValue
+    )
+    {
+        if (axisName.isEmpty() ||
+            qFuzzyIsNull(axisValue)) {
+            return;
+        }
+
+        QString label;
+
+        const bool shiftPressed =
+            pressedModifiers.contains(
+                QStringLiteral("KEY_LEFTSHIFT")
+            ) ||
+            pressedModifiers.contains(
+                QStringLiteral("KEY_RIGHTSHIFT")
+            );
+
+        /*
+         * -----------------------------------------------------------
+         * Scroll vertical
+         * -----------------------------------------------------------
+         *
+         * Sin Shift:
+         *
+         *     negativo -> arriba
+         *     positivo -> abajo
+         *
+         * Con Shift:
+         *
+         *     negativo -> izquierda
+         *     positivo -> derecha
+         */
+        if (axisName ==
+            QStringLiteral("VERTICAL_SCROLL")) {
+
+            if (shiftPressed) {
+
+                label =
+                    axisValue < 0.0
+                        ? QStringLiteral("⇧  Wheel ←")
+                        : QStringLiteral("⇧  Wheel →");
+
+            } else {
+
+                label =
+                    axisValue < 0.0
+                        ? QStringLiteral("Wheel ↑")
+                        : QStringLiteral("Wheel ↓");
+            }
+
+        /*
+         * -----------------------------------------------------------
+         * Scroll horizontal nativo
+         * -----------------------------------------------------------
+         */
+        } else if (
+            axisName ==
+            QStringLiteral("HORIZONTAL_SCROLL")) {
+
+            label =
+                axisValue < 0.0
+                    ? QStringLiteral("Wheel ←")
+                    : QStringLiteral("Wheel →");
+
+        } else {
+            return;
+        }
+
+        addVisualEntry(
+            QStringList{label},
+            false
+        );
+
+        qDebug()
+            << "KDE KeyCast wheel:"
+            << axisName
+            << axisValue
+            << label
+            << "shift="
+            << shiftPressed;
     }
 
     void finishCombination()
@@ -4044,6 +4552,37 @@ private:
                 obj.value(
                     QStringLiteral("state_name")
                 ).toString();
+
+            /*
+             * -------------------------------------------------------
+             * MOUSE WHEEL
+             * -------------------------------------------------------
+             *
+             * POINTER_AXIS no tiene key_name ni key_code.
+             * Por eso debe procesarse antes de los filtros
+             * específicos del teclado/botones.
+             */
+
+            if (eventName ==
+                QStringLiteral("POINTER_AXIS")) {
+
+                const QString axisName =
+                    obj.value(
+                        QStringLiteral("axis_name")
+                    ).toString();
+
+                const double axisValue =
+                    obj.value(
+                        QStringLiteral("axis_value")
+                    ).toDouble();
+
+                addMouseWheel(
+                    axisName,
+                    axisValue
+                );
+
+                continue;
+            }
 
             if (keyName.isEmpty())
                 continue;
@@ -4722,6 +5261,8 @@ if (released) {
     wl_registry *registry = nullptr;
     wl_seat *seat = nullptr;
     wl_keyboard *keyboard = nullptr;
+
+    WaylandPointer waylandPointer;
 
     QSocketNotifier *waylandNotifier = nullptr;
 
