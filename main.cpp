@@ -4273,16 +4273,30 @@ private:
          */
         bool characterKey = false;
 
-        if (primary.size() == 1) {
+        const bool compactSpecialKey =
+            compactMode &&
+            (primary == QStringLiteral("␣") ||
+             primary == QStringLiteral("↵") ||
+             primary == QStringLiteral("⌫") ||
+             primary == QStringLiteral("⌦") ||
+             primary == QStringLiteral("⇥") ||
+             primary == QStringLiteral("⇪") ||
+             primary == QStringLiteral("⇧") ||
+             primary == QStringLiteral("⌃") ||
+             primary == QStringLiteral("⌥") ||
+             primary == QStringLiteral("⎇") ||
+             primary == QStringLiteral("⌘"));
+
+        if (!compactSpecialKey &&
+            primary.size() == 1) {
 
             const QChar ch =
                 primary.at(0);
 
             characterKey =
                 ch.isLetterOrNumber() ||
-                QStringLiteral(
-                    "!@#$%^&*()_+=-{}[]:;\"'<>,.?/\\\\|~`"
-                ).contains(ch);
+                ch.isPunct() ||
+                ch.isSymbol();
         }
 
         if (!characterKey && compactMode)
