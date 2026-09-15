@@ -936,6 +936,8 @@ protected:
             const VisualEntry &entry =
                 visualQueue[draw.index];
 
+            qreal repeatBadgeX = x - 5;
+
             const qint64 age =
                 now - entry.created;
 
@@ -1302,6 +1304,9 @@ protected:
                      i < components.size();
                      ++i) {
 
+                    if (i == components.size() - 1)
+                        repeatBadgeX = componentX - 5;
+
                     QRectF componentRect(
                         componentX,
                         top,
@@ -1423,7 +1428,7 @@ protected:
                     badgeHeight * badgeScale;
 
                 QRectF badgeRect(
-                    x - 5,
+                    repeatBadgeX,
                     top - 7,
                     scaledBadgeWidth,
                     scaledBadgeHeight
@@ -3195,6 +3200,10 @@ private:
     {"BTN_LEFT", "◀"},
     {"BTN_RIGHT", "▶"},
     {"BTN_MIDDLE", "●"},
+    {"BTN_WHEEL_UP", "Mouse Wheel Up"},
+    {"BTN_WHEEL_DOWN", "Mouse Wheel Down"},
+    {"BTN_WHEEL_LEFT", "Mouse Wheel Left"},
+    {"BTN_WHEEL_RIGHT", "Mouse Wheel Right"},
     {"BTN_SIDE", "🖱4"},
     {"BTN_EXTRA", "🖱5"}
 };
@@ -3217,7 +3226,7 @@ private:
 
         return name;
     }
-    
+
     QString compactDisplayName(
     const QString &name
 ) const
@@ -3254,6 +3263,10 @@ private:
         {"Mouse Left", "◀"},
         {"Mouse Right", "▶"},
         {"Mouse Middle", "●"},
+        {"Mouse Wheel Up", "◎↑"},
+        {"Mouse Wheel Down", "◎↓"},
+        {"Mouse Wheel Left", "◎←"},
+        {"Mouse Wheel Right", "◎→"},
         {"Mouse 4", "◀4"},
         {"Mouse 5", "▶5"}
     };
@@ -4244,8 +4257,6 @@ private:
             return;
         }
 
-        QString label;
-
         const bool shiftPressed =
             pressedModifiers.contains(
                 QStringLiteral("KEY_LEFTSHIFT")
@@ -4254,21 +4265,14 @@ private:
                 QStringLiteral("KEY_RIGHTSHIFT")
             );
 
+        QString label;
+
         /*
          * -----------------------------------------------------------
-         * Scroll vertical
+         * Dirección visual de la rueda
          * -----------------------------------------------------------
-         *
-         * Sin Shift:
-         *
-         *     negativo -> arriba
-         *     positivo -> abajo
-         *
-         * Con Shift:
-         *
-         *     negativo -> izquierda
-         *     positivo -> derecha
          */
+
         if (axisName ==
             QStringLiteral("VERTICAL_SCROLL")) {
 
@@ -4276,34 +4280,165 @@ private:
 
                 label =
                     axisValue < 0.0
-                        ? QStringLiteral("⇧  Wheel ←")
-                        : QStringLiteral("⇧  Wheel →");
+                        ? (compactMode
+                            ? QStringLiteral("◎←")
+                            : QStringLiteral("Wheel ←"))
+                        : (compactMode
+                            ? QStringLiteral("◎→")
+                            : QStringLiteral("Wheel →"));
 
             } else {
 
                 label =
                     axisValue < 0.0
-                        ? QStringLiteral("Wheel ↑")
-                        : QStringLiteral("Wheel ↓");
+                        ? (compactMode
+                            ? QStringLiteral("◎↑")
+                            : QStringLiteral("Wheel ↑"))
+                        : (compactMode
+                            ? QStringLiteral("◎↓")
+                            : QStringLiteral("Wheel ↓"));
             }
 
-        /*
-         * -----------------------------------------------------------
-         * Scroll horizontal nativo
-         * -----------------------------------------------------------
-         */
         } else if (
             axisName ==
             QStringLiteral("HORIZONTAL_SCROLL")) {
 
             label =
                 axisValue < 0.0
-                    ? QStringLiteral("Wheel ←")
-                    : QStringLiteral("Wheel →");
+                    ? (compactMode
+                        ? QStringLiteral("◎←")
+                        : QStringLiteral("Wheel ←"))
+                    : (compactMode
+                        ? QStringLiteral("◎→")
+                        : QStringLiteral("Wheel →"));
 
         } else {
             return;
         }
+
+        /*
+         * -----------------------------------------------------------
+         * SHIFT + WHEEL
+         *
+         * Una única entrada de combinación:
+         *
+         *     [ Shift ] + [ Wheel ← ×3 ]
+         *
+         * El pintado de combinaciones ya proporciona la serigrafía
+         * ⇧ de Shift.
+         * -----------------------------------------------------------
+         */
+
+        if (shiftPressed) {
+
+            const QStringList keys{
+                QStringLiteral("Shift"),
+                label
+            };
+
+            /*
+             * Buscar la combinación Shift + Wheel que ya está visible.
+             */
+            for (int i = visualQueue.size() - 1;
+                 i >= 0;
+                 --i) {
+
+                VisualEntry &entry =
+                    visualQueue[i];
+
+                if (!entry.combination ||
+                    entry.keys.size() != 2 ||
+                    entry.keys.first() !=
+                        QStringLiteral("Shift")) {
+
+                    continue;
+                }
+
+                const QString oldWheel =
+                    entry.keys.at(1);
+
+                const bool oldIsWheel =
+                    oldWheel.startsWith(
+                        QStringLiteral("Wheel ")
+                    ) ||
+                    oldWheel.startsWith(
+                        QStringLiteral("◎")
+                    );
+
+                if (!oldIsWheel)
+                    continue;
+
+                /*
+                 * MISMA DIRECCIÓN:
+                 *
+                 * solamente incrementamos ×2, ×3...
+                 */
+                if (oldWheel == label) {
+
+                    entry.repeatCount++;
+
+                    entry.expires =
+                        QDateTime::currentMSecsSinceEpoch()
+                        + 1800;
+
+                    update();
+
+                    return;
+                }
+
+                /*
+                 * DIRECCIÓN DISTINTA:
+                 *
+                 * sustituimos únicamente la rueda.
+                 *
+                 * Shift permanece en la misma entrada.
+                 */
+                entry.keys[1] = label;
+
+                entry.repeatCount = 1;
+
+                entry.created =
+                    QDateTime::currentMSecsSinceEpoch();
+
+                entry.expires =
+                    entry.created + 1800;
+
+                update();
+
+                return;
+            }
+
+            /*
+             * Primera rueda con Shift.
+             */
+            VisualEntry entry;
+
+            entry.keys = keys;
+            entry.created =
+                QDateTime::currentMSecsSinceEpoch();
+
+            entry.expires =
+                entry.created + 1800;
+
+            entry.combination = true;
+            entry.repeatCount = 1;
+            entry.linuxKeyCode = -1;
+
+            visualQueue.append(entry);
+
+            while (visualQueue.size() > 6)
+                visualQueue.removeFirst();
+
+            update();
+
+            return;
+        }
+
+        /*
+         * -----------------------------------------------------------
+         * RUEDA NORMAL
+         * -----------------------------------------------------------
+         */
 
         addVisualEntry(
             QStringList{label},
@@ -4318,7 +4453,6 @@ private:
             << "shift="
             << shiftPressed;
     }
-
     void finishCombination()
     {
         if (!combinationActive)
@@ -4424,7 +4558,7 @@ private:
                 QStringLiteral("KEY_RIGHTMETA")
             );
     }
-    
+
     bool isShiftOnlyTextKey(
     const QString &visualName
 ) const
@@ -4495,7 +4629,7 @@ private:
 
         currentCombination =
             currentModifierNames();
-            
+
         currentCombinationKey.clear();
     }
 
@@ -4633,7 +4767,7 @@ private:
 
             const bool modifier =
                 isModifier(keyName);
-                
+
                 if (pressed &&
                 keyName == QStringLiteral("KEY_T") &&
                 pressedModifiers.contains(
@@ -4656,7 +4790,7 @@ private:
                     )) {
 
                     toggleCompactMode();
-            
+
                 }
 
 
@@ -5136,6 +5270,40 @@ if (released) {
             keyName
         );
 
+        if (keyName == QStringLiteral("KEY_LEFTSHIFT") ||
+            keyName == QStringLiteral("KEY_RIGHTSHIFT")) {
+
+            for (int i = visualQueue.size() - 1;
+                 i >= 0;
+                 --i) {
+
+                const VisualEntry &entry =
+                    visualQueue[i];
+
+                if (!entry.combination ||
+                    entry.keys.size() != 2 ||
+                    entry.keys.at(0) !=
+                        QStringLiteral("Shift")) {
+                    continue;
+                }
+
+                const QString wheel =
+                    entry.keys.at(1);
+
+                if (wheel.startsWith(
+                        QStringLiteral("Wheel ")
+                    ) ||
+                    wheel.startsWith(
+                        QStringLiteral("◎"))) {
+
+                    visualQueue.remove(i);
+                    break;
+                }
+            }
+
+            update();
+        }
+
         /*
          * Si todavía queda algún modificador, mantenemos
          * la combinación activa.
@@ -5199,7 +5367,7 @@ if (released) {
 
         }
     }
-    
+
     void toggleAlwaysOnTop()
     {
         alwaysOnTop = !alwaysOnTop;
@@ -5275,11 +5443,14 @@ if (released) {
     QVector<VisualEntry> visualQueue;
 
     bool combinationActive = false;
+    bool shiftVisualActive = false;
     QStringList currentCombination;
     QString currentCombinationKey;
 
     QSet<QString> pressedModifiers;
-    
+
+    bool shiftWheelVisualActive = false;
+
     bool compactMode = false;
     bool alwaysOnTop = true;
 
