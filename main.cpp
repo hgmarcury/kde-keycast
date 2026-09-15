@@ -32,6 +32,8 @@
 #include <wayland-client.h>
 
 #include <xkbcommon/xkbcommon.h>
+#include <xkbcommon/xkbcommon-compose.h>
+#include <limits>
 
 #include <sys/mman.h>
 #include <unistd.h>
@@ -41,6 +43,7 @@
 
 struct VisualEntry {
     QStringList keys;
+    QStringList keySecondaryLegends;
     qint64 created = 0;
     qint64 expires = 0;
     bool combination = false;
@@ -49,6 +52,7 @@ struct VisualEntry {
     // Código Linux de la tecla física cuando la entrada representa
     // una única tecla. Las combinaciones utilizan -1.
     int linuxKeyCode = -1;
+    bool composePending = false;
 };
 
 
@@ -592,6 +596,8 @@ public:
         if (display)
             wl_display_disconnect(display);
 
+        resetComposeState();
+
         if (xkbState)
             xkb_state_unref(xkbState);
 
@@ -805,21 +811,61 @@ protected:
                 }
             }
 
-            QString widthText = primary;
-
-            if (!secondary.isEmpty())
-                widthText += QStringLiteral("  ");
-
             QFontMetrics fm(mainFont);
 
-            const int textWidth =
-                fm.horizontalAdvance(widthText);
+            int boxWidth = 0;
 
-            const int boxWidth =
-                qMax(
-                    minimumBoxWidth,
-                    textWidth + 28
-                );
+            if (entry.combination &&
+                entry.keys.size() > 1) {
+
+                const int comboSeparatorGap = 8;
+
+                const int comboSeparatorWidth =
+                    fm.horizontalAdvance(
+                        QStringLiteral("+")
+                    );
+
+                for (int k = 0;
+                     k < visualKeys.size();
+                     ++k) {
+
+                    const int componentWidth =
+                        qMax(
+                            minimumBoxWidth,
+                            fm.horizontalAdvance(
+                                visualKeys.at(k)
+                            ) + 28
+                        );
+
+                    boxWidth += componentWidth;
+
+                    if (k + 1 <
+                        visualKeys.size()) {
+
+                        boxWidth +=
+                            comboSeparatorGap * 2 +
+                            comboSeparatorWidth;
+                    }
+                }
+
+            } else {
+
+                QString widthText = primary;
+
+                if (!secondary.isEmpty())
+                    widthText += QStringLiteral("  ");
+
+                const int textWidth =
+                    fm.horizontalAdvance(
+                        widthText
+                    );
+
+                boxWidth =
+                    qMax(
+                        minimumBoxWidth,
+                        textWidth + 28
+                    );
+            }
 
             const int requiredWidth =
                 visibleEntries.isEmpty()
@@ -1270,7 +1316,20 @@ protected:
 
                     QStringList legends;
 
-                    if (i < draw.keySecondary.size()) {
+                    if (!entry.keySecondaryLegends.isEmpty() &&
+                        i < entry.keySecondaryLegends.size()) {
+
+                        const QString legend =
+                            entry.keySecondaryLegends.at(i);
+
+                        if (!legend.isEmpty())
+                            legends =
+                                legend.split(
+                                    QStringLiteral("\n"),
+                                    Qt::SkipEmptyParts
+                                );
+
+                    } else if (i < draw.keySecondary.size()) {
 
                         const QString legend =
                             draw.keySecondary.at(i);
@@ -3451,6 +3510,57 @@ private:
         self->xkbState =
             newState;
 
+        self->resetComposeState();
+
+        QByteArray locale =
+            qEnvironmentVariable("LC_ALL").toLocal8Bit();
+
+        if (locale.isEmpty())
+            locale =
+                qEnvironmentVariable("LC_CTYPE").toLocal8Bit();
+
+        if (locale.isEmpty())
+            locale =
+                qEnvironmentVariable("LANG").toLocal8Bit();
+
+        if (locale.isEmpty())
+            locale =
+                QByteArrayLiteral("C");
+
+        self->xkbComposeTable =
+            xkb_compose_table_new_from_locale(
+                context,
+                locale.constData(),
+                XKB_COMPOSE_COMPILE_NO_FLAGS
+            );
+
+        if (!self->xkbComposeTable) {
+
+            qWarning()
+                << "KDE KeyCast: no se pudo crear la tabla Compose para"
+                << locale;
+
+        } else {
+
+            self->xkbComposeState =
+                xkb_compose_state_new(
+                    self->xkbComposeTable,
+                    XKB_COMPOSE_STATE_NO_FLAGS
+                );
+
+            if (!self->xkbComposeState) {
+
+                xkb_compose_table_unref(
+                    self->xkbComposeTable
+                );
+
+                self->xkbComposeTable = nullptr;
+
+                qWarning()
+                    << "KDE KeyCast: no se pudo crear el estado Compose";
+            }
+        }
+
         xkb_context_unref(context);
 
         /*
@@ -3463,6 +3573,253 @@ private:
 
         qDebug()
             << "KDE KeyCast: XKB keymap actualizado desde Wayland";
+    }
+
+    bool handleComposeKey(
+        int linuxKeyCode,
+        const QString &visualName
+    )
+    {
+        if (!xkbComposeState ||
+            visualName.isEmpty()) {
+
+            return false;
+        }
+
+        if (!xkbState)
+            return false;
+
+        const xkb_keycode_t keycode =
+            xkbKeycodeFromLinuxCode(
+                linuxKeyCode
+            );
+
+        if (keycode == XKB_KEYCODE_INVALID)
+            return false;
+
+        const xkb_keysym_t keysym =
+            xkb_state_key_get_one_sym(
+                xkbState,
+                keycode
+            );
+
+        if (keysym == XKB_KEY_NoSymbol)
+            return false;
+
+        const xkb_compose_feed_result result =
+            xkb_compose_state_feed(
+                xkbComposeState,
+                keysym
+            );
+
+        if (result ==
+            XKB_COMPOSE_FEED_IGNORED) {
+
+            return false;
+        }
+
+        const xkb_compose_status status =
+            xkb_compose_state_get_status(
+                xkbComposeState
+            );
+
+        /*
+         * -----------------------------------------------------------
+         * COMPOSING
+         * -----------------------------------------------------------
+         */
+
+        if (status ==
+            XKB_COMPOSE_COMPOSING) {
+
+            composeSequence.append(
+                visualName
+            );
+            composeKeyLegends.append(
+                xkbSecondaryLegends(
+                    linuxKeyCode,
+                    visualName
+                )
+            );
+
+            /*
+             * Primera tecla de la composición.
+             */
+            if (composeSequence.size() == 1) {
+
+                addVisualEntry(
+                    QStringList{
+                        visualName
+                    },
+                    false,
+                    linuxKeyCode
+                );
+
+                const int index =
+                    visualQueue.size() - 1;
+
+                if (index >= 0) {
+
+                    visualQueue[index].composePending =
+                        true;
+
+                    visualQueue[index].expires =
+                        std::numeric_limits<qint64>::max();
+                }
+
+            /*
+             * Si Compose necesita más teclas,
+             * no añadimos otra tarjeta todavía.
+             */
+            }
+
+            update();
+
+            return true;
+        }
+
+        /*
+         * -----------------------------------------------------------
+         * COMPOSED
+         * -----------------------------------------------------------
+         */
+
+        if (status ==
+            XKB_COMPOSE_COMPOSED) {
+
+            composeSequence.append(
+                visualName
+            );
+            composeKeyLegends.append(
+                            xkbSecondaryLegends(
+                                linuxKeyCode,
+                                visualName
+                            )
+                        );
+
+
+
+            const int index =
+                findComposePendingEntry();
+
+            /*
+             * Ejemplo:
+             *
+             *     ´ + ´ -> ´
+             *
+             * La entrada pendiente ya representa ´.
+             * addVisualEntry() se encargará de convertirla
+             * en ´ ×2.
+             */
+            if (composeSequence.size() == 2 &&
+                composeSequence.at(0) ==
+                    composeSequence.at(1)) {
+
+                if (index >= 0)
+                    visualQueue[index].composePending =
+                        false;
+
+                resetComposeSequence();
+                composeKeyLegends.clear();
+
+                addVisualEntry(
+                    QStringList{
+                        visualName
+                    },
+                    false,
+                    linuxKeyCode
+                );
+
+                update();
+
+                return true;
+            }
+
+            /*
+             * Composición real:
+             *
+             *     ´ + a -> á
+             *
+             * Visualmente queremos conservar la secuencia.
+             */
+            if (index >= 0) {
+
+                VisualEntry &entry =
+                    visualQueue[index];
+
+                entry.keys =
+                    composeSequence;
+
+                entry.keySecondaryLegends.clear();
+
+                for (const QStringList &legends :
+                     composeKeyLegends) {
+
+                    entry.keySecondaryLegends.append(
+                        legends.join(
+                            QStringLiteral("\n")
+                        )
+                    );
+                }
+
+
+                entry.combination = true;
+                entry.repeatCount = 1;
+                entry.linuxKeyCode = -1;
+                entry.composePending = false;
+
+                entry.created =
+                    QDateTime::currentMSecsSinceEpoch();
+
+                entry.expires =
+                    entry.created + 1800;
+            }
+
+            resetComposeSequence();
+
+            update();
+
+            return true;
+        }
+
+        /*
+         * -----------------------------------------------------------
+         * CANCELLED
+         * -----------------------------------------------------------
+         */
+
+        if (status ==
+            XKB_COMPOSE_CANCELLED) {
+
+            const int index =
+                findComposePendingEntry();
+
+            /*
+             * La dead key deja de ser "pendiente".
+             * Se conserva como pulsación normal.
+             */
+            if (index >= 0) {
+
+                VisualEntry &entry =
+                    visualQueue[index];
+
+                entry.composePending = false;
+
+                entry.expires =
+                    QDateTime::currentMSecsSinceEpoch()
+                    + 1800;
+            }
+
+            resetComposeSequence();
+
+            /*
+             * La tecla que canceló la composición
+             * vuelve al flujo normal.
+             */
+            return false;
+        }
+
+        return false;
     }
 
     static void keyboardEnter(
@@ -4009,6 +4366,53 @@ private:
                 ? XKB_KEY_DOWN
                 : XKB_KEY_UP
         );
+    }
+
+    void resetComposeState()
+    {
+        if (xkbComposeState) {
+
+            xkb_compose_state_unref(
+                xkbComposeState
+            );
+
+            xkbComposeState = nullptr;
+        }
+
+        if (xkbComposeTable) {
+
+            xkb_compose_table_unref(
+                xkbComposeTable
+            );
+
+            xkbComposeTable = nullptr;
+        }
+
+        composeSequence.clear();
+    }
+
+    void resetComposeSequence()
+    {
+        if (xkbComposeState)
+            xkb_compose_state_reset(
+                xkbComposeState
+            );
+
+        composeSequence.clear();
+        composeKeyLegends.clear();
+    }
+
+    int findComposePendingEntry() const
+    {
+        for (int i = visualQueue.size() - 1;
+             i >= 0;
+             --i) {
+
+            if (visualQueue[i].composePending)
+                return i;
+        }
+
+        return -1;
     }
 
     QString xkbDisplayName(
@@ -4897,7 +5301,23 @@ if (pressed) {
             ? displayName(keyName)
             : name;
 
+    /*
+     * -----------------------------------------------------------
+     * XKB COMPOSE / DEAD KEYS
+     * -----------------------------------------------------------
+     */
 
+    if (!modifier &&
+        !hasNonShiftModifier()) {
+
+        if (handleComposeKey(
+                linuxKeyCode,
+                visualName
+            )) {
+
+            continue;
+        }
+    }
     /*
      * -----------------------------------------------------------
      * SHIFT + TEXTO
@@ -5436,6 +5856,11 @@ if (released) {
 
     xkb_keymap *xkbKeymap = nullptr;
     xkb_state *xkbState = nullptr;
+    xkb_compose_table *xkbComposeTable = nullptr;
+    xkb_compose_state *xkbComposeState = nullptr;
+
+    QStringList composeSequence;
+    QVector<QStringList> composeKeyLegends;
 
     QProcess process;
     QTimer timer;
