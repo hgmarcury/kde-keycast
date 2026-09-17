@@ -432,6 +432,12 @@ public:
                 true
             ).toBool();
 
+        lightMode =
+            settings.value(
+                QStringLiteral("lightMode"),
+                false
+            ).toBool();
+
         QDBusConnection dbus =
             QDBusConnection::sessionBus();
 
@@ -611,6 +617,11 @@ public:
         settings.setValue(
             QStringLiteral("alwaysOnTop"),
             alwaysOnTop
+        );
+
+        settings.setValue(
+            QStringLiteral("lightMode"),
+            lightMode
         );
 
         if (waylandNotifier)
@@ -986,42 +997,50 @@ protected:
             0, 0, 0, 90
         );
 
-        const QColor keyTop(
-            64, 66, 72, 255
-        );
+        const QColor keyTop =
+            lightMode
+                ? QColor(255, 255, 255, 255)
+                : QColor(64, 66, 72, 255);
 
-        const QColor keyMiddle(
-            43, 46, 52, 255
-        );
+        const QColor keyMiddle =
+            lightMode
+                ? QColor(242, 243, 245, 255)
+                : QColor(43, 46, 52, 255);
 
-        const QColor keyBottom(
-            23, 25, 30, 255
-        );
+        const QColor keyBottom =
+            lightMode
+                ? QColor(224, 226, 230, 255)
+                : QColor(23, 25, 30, 255);
 
-        const QColor edge(
-            255, 255, 255, 68
-        );
+        const QColor edge =
+            lightMode
+                ? QColor(0, 0, 0, 55)
+                : QColor(255, 255, 255, 68);
 
-        const QColor edgeBottom(
-            0, 0, 0, 150
-        );
+        const QColor edgeBottom =
+            lightMode
+                ? QColor(0, 0, 0, 105)
+                : QColor(0, 0, 0, 150);
 
-        const QColor highlight(
-            255, 255, 255, 34
-        );
+        const QColor highlight =
+            lightMode
+                ? QColor(255, 255, 255, 150)
+                : QColor(255, 255, 255, 34);
 
-        const QColor textColor(
-            250, 250, 252, 255
-        );
+        const QColor textColor =
+            lightMode
+                ? QColor(28, 30, 34, 255)
+                : QColor(250, 250, 252, 255);
 
-        const QColor secondaryColor(
-            205, 207, 212, 185
-        );
+        const QColor secondaryColor =
+            lightMode
+                ? QColor(75, 78, 84, 185)
+                : QColor(205, 207, 212, 185);
 
-        const QColor combinationBorder(
-            255, 255, 255, 88
-        );
-
+        const QColor combinationBorder =
+            lightMode
+                ? QColor(0, 0, 0, 65)
+                : QColor(255, 255, 255, 88);
         /*
          * -----------------------------------------------------------
          * Keycaps
@@ -5916,6 +5935,17 @@ if (released) {
         update();
     }
 
+    void toggleLightMode()
+    {
+        lightMode = !lightMode;
+
+        qDebug()
+            << "KDE KeyCast: light mode ="
+            << lightMode;
+
+        update();
+    }
+
     /*
      * ---------------------------------------------------------------
      * Members
@@ -5955,6 +5985,7 @@ if (released) {
 
     bool compactMode = false;
     bool alwaysOnTop = true;
+    bool lightMode = false;
 
 };
 
@@ -5971,6 +6002,14 @@ void KeyCast::contextMenuEvent(
 
     compactAction->setCheckable(true);
     compactAction->setChecked(compactMode);
+
+    QAction *lightModeAction =
+        menu.addAction(
+            QStringLiteral("Light mode")
+        );
+
+    lightModeAction->setCheckable(true);
+    lightModeAction->setChecked(lightMode);
 
     QAction *alwaysOnTopAction =
         menu.addAction(
@@ -5992,6 +6031,15 @@ void KeyCast::contextMenuEvent(
         this,
         [this]() {
             toggleCompactMode();
+        }
+    );
+
+    connect(
+        lightModeAction,
+        &QAction::triggered,
+        this,
+        [this]() {
+            toggleLightMode();
         }
     );
 
