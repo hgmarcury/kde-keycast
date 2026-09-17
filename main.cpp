@@ -62,6 +62,8 @@ struct VisualEntry {
     // una única tecla. Las combinaciones utilizan -1.
     int linuxKeyCode = -1;
     bool composePending = false;
+    bool keyboardEntry = false;
+    bool maskKeyboard = false;
 };
 
 
@@ -443,6 +445,12 @@ public:
                 false
             ).toBool();
 
+        hideKeys =
+            settings.value(
+                QStringLiteral("hideKeys"),
+                false
+            ).toBool();
+
         QDBusConnection dbus =
             QDBusConnection::sessionBus();
 
@@ -629,6 +637,11 @@ public:
             lightMode
         );
 
+        settings.setValue(
+            QStringLiteral("hideKeys"),
+            hideKeys
+        );
+
         if (waylandNotifier)
             delete waylandNotifier;
 
@@ -756,21 +769,41 @@ protected:
 
             QStringList visualKeys;
 
-            for (const QString &key : entry.keys) {
 
-                QString visualKey = key;
+            const bool isShiftWheel =
+                entry.combination &&
+                entry.keys.size() == 2 &&
+                entry.keys.at(0) == QStringLiteral("Shift") &&
+                (
+                    entry.keys.at(1).startsWith(QStringLiteral("Wheel ")) ||
+                    entry.keys.at(1).startsWith(QStringLiteral("◎"))
+                );
 
-                /*
-                 * En modo normal las teclas especiales conservan
-                 * su nombre como leyenda principal.
-                 *
-                 * En compacto utilizan su símbolo.
-                 */
-                if (compactMode)
-                    visualKey =
-                        compactDisplayName(key);
+            if (entry.maskKeyboard &&
+                (entry.keyboardEntry ||
+                 (entry.combination && !isShiftWheel))) {
 
-                visualKeys.append(visualKey);
+                for (const QString &key : entry.keys) {
+                    Q_UNUSED(key);
+
+                    visualKeys.append(
+                        QStringLiteral("•")
+                    );
+                }
+
+            } else {
+
+                for (const QString &key : entry.keys) {
+                    QString visualKey = key;
+
+                    if (compactMode)
+                        visualKey =
+                            compactDisplayName(key);
+
+                    visualKeys.append(
+                        visualKey
+                    );
+                }
             }
 
             QString primary =
@@ -895,6 +928,13 @@ protected:
                             secondary.prepend(symbol);
                     }
                 }
+            }
+
+            if (entry.keyboardEntry &&
+                entry.maskKeyboard) {
+
+                secondary.clear();
+                keySecondary.clear();
             }
 
             QFontMetrics fm(mainFont);
@@ -1387,12 +1427,20 @@ protected:
                      i < entry.keys.size();
                      ++i) {
 
-                    const QString component =
-                        compactMode
-                            ? compactDisplayName(
-                                entry.keys.at(i)
-                              )
-                            : entry.keys.at(i);
+                         const bool maskCombination =
+                             entry.keyboardEntry &&
+                             entry.maskKeyboard;
+
+                             const QString component =
+                                 maskCombination
+                                     ? QStringLiteral("•")
+                                     : (
+                                         compactMode
+                                             ? compactDisplayName(
+                                                 entry.keys.at(i)
+                                               )
+                                             : entry.keys.at(i)
+                                       );
 
                     const int textWidth =
                         mainMetrics.horizontalAdvance(
@@ -3742,7 +3790,7 @@ private:
              */
             if (composeSequence.size() == 1) {
 
-                addVisualEntry(
+                addKeyboardVisualEntry(
                     QStringList{
                         visualName
                     },
@@ -3817,7 +3865,7 @@ private:
                 resetComposeSequence();
                 composeKeyLegends.clear();
 
-                addVisualEntry(
+                addKeyboardVisualEntry(
                     QStringList{
                         visualName
                     },
@@ -4743,6 +4791,24 @@ private:
     update();
 }
 
+void addKeyboardVisualEntry(
+    const QStringList &keys,
+    bool combination,
+    int linuxKeyCode = -1
+)
+{
+    addVisualEntry(
+        keys,
+        combination,
+        linuxKeyCode
+    );
+
+    if (!visualQueue.isEmpty()) {
+        visualQueue.last().keyboardEntry = true;
+        visualQueue.last().maskKeyboard = hideKeys;
+        update();
+    }
+}
 
     void addMouseButton(
         const QString &keyName
@@ -4988,7 +5054,7 @@ private:
 
     if (currentCombination.size() >= 2) {
 
-        addVisualEntry(
+        addKeyboardVisualEntry(
             currentCombination,
             true
         );
@@ -5298,6 +5364,17 @@ private:
 
                 }
 
+            if (pressed &&
+                keyName == QStringLiteral("KEY_H") &&
+                pressedModifiers.contains(
+                    QStringLiteral("KEY_LEFTCTRL")
+                ) &&
+                pressedModifiers.contains(
+                    QStringLiteral("KEY_LEFTSHIFT")
+                )) {
+
+                toggleHideKeys();
+            }
 
             const bool shift =
                   keyName ==
@@ -5436,7 +5513,7 @@ if (pressed) {
         !hasNonShiftModifier() &&
         isShiftOnlyTextKey(visualName)) {
 
-        addVisualEntry(
+        addKeyboardVisualEntry(
             QStringList{
                 visualName
             },
@@ -5748,7 +5825,7 @@ if (pressed) {
      * -----------------------------------------------------------
      */
 
-    addVisualEntry(
+    addKeyboardVisualEntry(
         QStringList{
             visualName
         },
@@ -5951,6 +6028,18 @@ if (released) {
         update();
     }
 
+    void toggleHideKeys()
+    {
+        hideKeys = !hideKeys;
+
+        qDebug()
+            << "KDE KeyCast: hide keys ="
+            << hideKeys;
+
+        update();
+    }
+
+
     /*
      * ---------------------------------------------------------------
      * Members
@@ -5991,6 +6080,7 @@ if (released) {
     bool compactMode = false;
     bool alwaysOnTop = true;
     bool lightMode = false;
+    bool hideKeys = false;
 
 };
 
@@ -6206,6 +6296,15 @@ void KeyCast::contextMenuEvent(
         lightMode,
         [this](bool) {
             toggleLightMode();
+        }
+    );
+
+    addSwitchAction(
+        menu,
+        QStringLiteral("Hide keys"),
+        hideKeys,
+        [this](bool) {
+            toggleHideKeys();
         }
     );
 
