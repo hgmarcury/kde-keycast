@@ -28,6 +28,10 @@
 #include <QFile>
 #include <QRegularExpression>
 #include <QtDBus/QtDBus>
+#include <QContextMenuEvent>
+#include <QMenu>
+#include <QDBusConnection>
+#include <QDBusMessage>
 
 #include <wayland-client.h>
 
@@ -386,6 +390,16 @@ private:
 
 class KeyCast : public QWidget
 {
+
+    Q_OBJECT
+
+
+    Q_CLASSINFO(
+           "D-Bus Interface",
+           "org.kde.KDEKeyCast"
+       )
+
+
 public:
     KeyCast()
     {
@@ -396,8 +410,7 @@ public:
 
         setWindowFlags(
             Qt::FramelessWindowHint |
-            Qt::Tool |
-            Qt::WindowStaysOnTopHint
+            Qt::Tool
         );
 
         setWindowTitle(QStringLiteral("KDE KeyCast"));
@@ -418,6 +431,25 @@ public:
                 QStringLiteral("alwaysOnTop"),
                 true
             ).toBool();
+
+        QDBusConnection dbus =
+            QDBusConnection::sessionBus();
+
+        if (!dbus.registerService(
+                QStringLiteral("org.kde.KDEKeyCast"))) {
+
+            qWarning()
+                << "KDE KeyCast: no se pudo registrar el servicio D-Bus";
+        }
+
+        if (!dbus.registerObject(
+                QStringLiteral("/KDEKeyCast"),
+                this,
+                QDBusConnection::ExportScriptableSlots)) {
+
+            qWarning()
+                << "KDE KeyCast: no se pudo registrar el objeto D-Bus";
+        }
 
         const int initialWidth =
             compactMode ? 300 : 400;
@@ -604,7 +636,45 @@ public:
         if (xkbKeymap)
             xkb_keymap_unref(xkbKeymap);
     }
+    public slots:
 
+        Q_SCRIPTABLE int processId() const
+        {
+            return static_cast<int>(
+                QCoreApplication::applicationPid()
+            );
+        }
+
+        Q_SCRIPTABLE bool isAlwaysOnTop() const
+        {
+            return alwaysOnTop;
+        }
+
+        Q_SCRIPTABLE void setKeepAboveState(bool state)
+        {
+            qDebug()
+                    << "KDE KeyCast: setKeepAboveState recibido ="
+                    << state;
+
+
+            alwaysOnTop = state;
+
+            QSettings settings(
+                QStringLiteral("KDE"),
+                QStringLiteral("KDEKeyCast")
+            );
+
+            settings.setValue(
+                QStringLiteral("alwaysOnTop"),
+                alwaysOnTop
+            );
+
+            qDebug()
+                << "KDE KeyCast: keepAbove ="
+                << alwaysOnTop;
+
+            update();
+        }
 protected:
 
     void mousePressEvent(QMouseEvent *event) override
@@ -1602,6 +1672,7 @@ protected:
         }
     }
 
+    void contextMenuEvent(QContextMenuEvent *event) override;
 
 private:
 
@@ -4285,6 +4356,10 @@ private:
              primary == QStringLiteral("⌃") ||
              primary == QStringLiteral("⌥") ||
              primary == QStringLiteral("⎇") ||
+             primary == QStringLiteral("⇱") ||
+             primary == QStringLiteral("⇲") ||
+             primary == QStringLiteral("⇞") ||
+             primary == QStringLiteral("⇟") ||
              primary == QStringLiteral("⌘"));
 
         if (!compactSpecialKey &&
@@ -5186,18 +5261,6 @@ private:
             const bool modifier =
                 isModifier(keyName);
 
-                if (pressed &&
-                keyName == QStringLiteral("KEY_T") &&
-                pressedModifiers.contains(
-                    QStringLiteral("KEY_LEFTCTRL")
-                ) &&
-                pressedModifiers.contains(
-                    QStringLiteral("KEY_LEFTSHIFT")
-                )) {
-
-                toggleAlwaysOnTop();
-            }
-
             if (pressed &&
                     keyName == QStringLiteral("KEY_M") &&
                     pressedModifiers.contains(
@@ -5804,24 +5867,24 @@ if (released) {
 
     void toggleAlwaysOnTop()
     {
-        alwaysOnTop = !alwaysOnTop;
+        QDBusMessage message =
+            QDBusMessage::createMethodCall(
+                QStringLiteral("org.kde.kglobalaccel"),
+                QStringLiteral("/component/kwin"),
+                QStringLiteral(
+                    "org.kde.kglobalaccel.Component"
+                ),
+                QStringLiteral("invokeShortcut")
+            );
 
-        const QPoint oldPosition = pos();
+        message <<
+            QStringLiteral(
+                "kde-keycast-toggle-keep-above"
+            );
 
-        const Qt::WindowFlags flags =
-            Qt::FramelessWindowHint |
-            Qt::Tool |
-            (alwaysOnTop
-                ? Qt::WindowStaysOnTopHint
-                : Qt::WindowType(0));
-
-        setWindowFlags(flags);
-        move(oldPosition);
-        show();
-
-        qDebug()
-            << "KDE KeyCast: always on top ="
-            << alwaysOnTop;
+        QDBusConnection::sessionBus().asyncCall(
+            message
+        );
     }
 
     void toggleCompactMode()
@@ -5895,6 +5958,63 @@ if (released) {
 
 };
 
+void KeyCast::contextMenuEvent(
+    QContextMenuEvent *event
+)
+{
+    QMenu menu(this);
+
+    QAction *compactAction =
+        menu.addAction(
+            QStringLiteral("Compact mode")
+        );
+
+    compactAction->setCheckable(true);
+    compactAction->setChecked(compactMode);
+
+    QAction *alwaysOnTopAction =
+        menu.addAction(
+            QStringLiteral("Always on top")
+        );
+
+    alwaysOnTopAction->setCheckable(true);
+    alwaysOnTopAction->setChecked(alwaysOnTop);
+
+    qDebug()
+        << "KDE KeyCast MENU: alwaysOnTop ="
+        << alwaysOnTop
+        << "action.checked ="
+        << alwaysOnTopAction->isChecked();
+
+    connect(
+        compactAction,
+        &QAction::triggered,
+        this,
+        [this]() {
+            toggleCompactMode();
+        }
+    );
+
+    connect(
+        alwaysOnTopAction,
+        &QAction::triggered,
+        this,
+        [this](bool checked) {
+
+            qDebug()
+                << "KDE KeyCast MENU:"
+                << "triggered checked =" << checked
+                << "alwaysOnTop antes =" << alwaysOnTop;
+
+            toggleAlwaysOnTop();
+        }
+    );
+
+    menu.exec(
+        event->globalPos()
+    );
+}
+
 /*
  * ---------------------------------------------------------------
  * Wayland listener definitions
@@ -5923,3 +6043,4 @@ int main(int argc, char **argv)
 
     return app.exec();
 }
+#include "main.moc"
