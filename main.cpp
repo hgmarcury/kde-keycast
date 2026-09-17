@@ -4726,6 +4726,11 @@ private:
     int linuxKeyCode = -1
 )
 {
+
+
+    if (pauseInput)
+            return;
+
     if (keys.isEmpty())
         return;
 
@@ -4835,6 +4840,10 @@ void addKeyboardVisualEntry(
         double axisValue
     )
     {
+
+        if (pauseInput)
+               return;
+
         if (axisName.isEmpty() ||
             qFuzzyIsNull(axisValue)) {
             return;
@@ -5282,21 +5291,23 @@ void addKeyboardVisualEntry(
 
             if (eventName ==
                 QStringLiteral("POINTER_AXIS")) {
+                if (pauseInput) {
 
-                const QString axisName =
-                    obj.value(
-                        QStringLiteral("axis_name")
-                    ).toString();
+                    const QString axisName =
+                        obj.value(
+                            QStringLiteral("axis_name")
+                        ).toString();
 
-                const double axisValue =
-                    obj.value(
-                        QStringLiteral("axis_value")
-                    ).toDouble();
+                    const double axisValue =
+                        obj.value(
+                            QStringLiteral("axis_value")
+                        ).toDouble();
 
-                addMouseWheel(
-                    axisName,
-                    axisValue
-                );
+                    addMouseWheel(
+                        axisName,
+                        axisValue
+                    );
+                }
 
                 continue;
             }
@@ -5374,6 +5385,15 @@ void addKeyboardVisualEntry(
                 )) {
 
                 toggleHideKeys();
+            }
+
+            if (pressed &&
+                keyName == QStringLiteral("KEY_P") &&
+                pressedModifiers.contains(QStringLiteral("KEY_LEFTCTRL")) &&
+                pressedModifiers.contains(QStringLiteral("KEY_LEFTSHIFT"))) {
+
+                togglePauseInput();
+                continue;
             }
 
             const bool shift =
@@ -6039,6 +6059,17 @@ if (released) {
         update();
     }
 
+    void togglePauseInput()
+    {
+        pauseInput = !pauseInput;
+
+        qDebug()
+            << "KDE KeyCast: pause input ="
+            << pauseInput;
+
+        update();
+    }
+
 
     /*
      * ---------------------------------------------------------------
@@ -6081,6 +6112,7 @@ if (released) {
     bool alwaysOnTop = true;
     bool lightMode = false;
     bool hideKeys = false;
+    bool pauseInput = false;
 
 };
 
@@ -6306,6 +6338,13 @@ void KeyCast::contextMenuEvent(
         [this](bool) {
             toggleHideKeys();
         }
+    );
+
+    addSwitchAction(
+        menu,
+        QStringLiteral("Pause input"),
+        pauseInput,
+        [this](bool) { togglePauseInput(); }
     );
 
     addSwitchAction(
