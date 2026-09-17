@@ -30,6 +30,11 @@
 #include <QtDBus/QtDBus>
 #include <QContextMenuEvent>
 #include <QMenu>
+#include <QWidgetAction>
+#include <QHBoxLayout>
+#include <QLabel>
+#include <QCheckBox>
+#include <QAbstractButton>
 #include <QDBusConnection>
 #include <QDBusMessage>
 
@@ -5989,71 +5994,226 @@ if (released) {
 
 };
 
+class SwitchButton : public QAbstractButton
+{
+public:
+    explicit SwitchButton(QWidget *parent = nullptr)
+        : QAbstractButton(parent)
+    {
+        setCheckable(true);
+        setCursor(Qt::PointingHandCursor);
+        setFixedSize(38, 22);
+        setFocusPolicy(Qt::NoFocus);
+    }
+
+protected:
+    void paintEvent(QPaintEvent *) override
+    {
+        QPainter p(this);
+
+        p.setRenderHint(
+            QPainter::Antialiasing,
+            true
+        );
+
+        /*
+         * -------------------------------------------------------
+         * Track
+         * -------------------------------------------------------
+         */
+        QColor trackColor =
+            isChecked()
+                ? QColor(61, 174, 233)
+                : QColor(110, 114, 121);
+
+        if (underMouse()) {
+            trackColor =
+                isChecked()
+                    ? QColor(79, 186, 237)
+                    : QColor(125, 129, 136);
+        }
+
+        const QRectF trackRect(
+            0.5,
+            0.5,
+            width() - 1.0,
+            height() - 1.0
+        );
+
+        p.setPen(Qt::NoPen);
+        p.setBrush(trackColor);
+
+        p.drawRoundedRect(
+            trackRect,
+            height() / 2.0,
+            height() / 2.0
+        );
+
+
+        /*
+         * -------------------------------------------------------
+         * Thumb shadow
+         * -------------------------------------------------------
+         */
+        const qreal thumbSize =
+            height() - 4.0;
+
+        const qreal thumbY =
+            2.0;
+
+        const qreal thumbX =
+            isChecked()
+                ? width() - thumbSize - 2.0
+                : 2.0;
+
+        const QRectF shadowRect(
+            thumbX,
+            thumbY + 1.0,
+            thumbSize,
+            thumbSize
+        );
+
+        p.setBrush(
+            QColor(
+                0,
+                0,
+                0,
+                45
+            )
+        );
+
+        p.drawEllipse(
+            shadowRect
+        );
+
+
+        /*
+         * -------------------------------------------------------
+         * Thumb
+         * -------------------------------------------------------
+         */
+        const QRectF thumbRect(
+            thumbX,
+            thumbY,
+            thumbSize,
+            thumbSize
+        );
+
+        p.setBrush(
+            QColor(
+                255,
+                255,
+                255,
+                255
+            )
+        );
+
+        p.drawEllipse(
+            thumbRect
+        );
+    }
+};
+
+static QWidgetAction *addSwitchAction(
+    QMenu &menu,
+    const QString &text,
+    bool checked,
+    const std::function<void(bool)> &onToggled
+)
+{
+    auto *action =
+        new QWidgetAction(&menu);
+
+    auto *row =
+        new QWidget();
+
+    auto *layout =
+        new QHBoxLayout(row);
+
+    layout->setContentsMargins(
+        8,
+        3,
+        8,
+        3
+    );
+
+    layout->setSpacing(10);
+
+
+    auto *label =
+        new QLabel(text);
+
+    label->setSizePolicy(
+        QSizePolicy::Expanding,
+        QSizePolicy::Preferred
+    );
+
+
+    auto *switchButton =
+        new SwitchButton();
+
+    switchButton->setChecked(
+        checked
+    );
+
+
+    layout->addWidget(
+        label
+    );
+
+    layout->addWidget(
+        switchButton
+    );
+
+
+    QObject::connect(
+        switchButton,
+        &QAbstractButton::toggled,
+        &menu,
+        onToggled
+    );
+
+
+    action->setDefaultWidget(
+        row
+    );
+
+    menu.addAction(
+        action
+    );
+
+    return action;
+}
+
 void KeyCast::contextMenuEvent(
     QContextMenuEvent *event
 )
 {
     QMenu menu(this);
 
-    QAction *compactAction =
-        menu.addAction(
-            QStringLiteral("Compact mode")
-        );
-
-    compactAction->setCheckable(true);
-    compactAction->setChecked(compactMode);
-
-    QAction *lightModeAction =
-        menu.addAction(
-            QStringLiteral("Light mode")
-        );
-
-    lightModeAction->setCheckable(true);
-    lightModeAction->setChecked(lightMode);
-
-    QAction *alwaysOnTopAction =
-        menu.addAction(
-            QStringLiteral("Always on top")
-        );
-
-    alwaysOnTopAction->setCheckable(true);
-    alwaysOnTopAction->setChecked(alwaysOnTop);
-
-    qDebug()
-        << "KDE KeyCast MENU: alwaysOnTop ="
-        << alwaysOnTop
-        << "action.checked ="
-        << alwaysOnTopAction->isChecked();
-
-    connect(
-        compactAction,
-        &QAction::triggered,
-        this,
-        [this]() {
+    addSwitchAction(
+        menu,
+        QStringLiteral("Compact mode"),
+        compactMode,
+        [this](bool) {
             toggleCompactMode();
         }
     );
 
-    connect(
-        lightModeAction,
-        &QAction::triggered,
-        this,
-        [this]() {
+    addSwitchAction(
+        menu,
+        QStringLiteral("Light mode"),
+        lightMode,
+        [this](bool) {
             toggleLightMode();
         }
     );
 
-    connect(
-        alwaysOnTopAction,
-        &QAction::triggered,
-        this,
-        [this](bool checked) {
-
-            qDebug()
-                << "KDE KeyCast MENU:"
-                << "triggered checked =" << checked
-                << "alwaysOnTop antes =" << alwaysOnTop;
-
+    addSwitchAction(
+        menu,
+        QStringLiteral("Always on top"),
+        alwaysOnTop,
+        [this](bool) {
             toggleAlwaysOnTop();
         }
     );
