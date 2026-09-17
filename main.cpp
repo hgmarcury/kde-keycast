@@ -4841,9 +4841,6 @@ void addKeyboardVisualEntry(
     )
     {
 
-        if (pauseInput)
-               return;
-
         if (axisName.isEmpty() ||
             qFuzzyIsNull(axisValue)) {
             return;
@@ -4908,6 +4905,16 @@ void addKeyboardVisualEntry(
             return;
         }
 
+        qDebug()
+            << "KDE KeyCast wheel:"
+            << axisName
+            << axisValue
+            << label
+            << "shift="
+            << shiftPressed;
+
+        if (pauseInput)
+            return;
         /*
          * -----------------------------------------------------------
          * SHIFT + WHEEL
@@ -5291,7 +5298,6 @@ void addKeyboardVisualEntry(
 
             if (eventName ==
                 QStringLiteral("POINTER_AXIS")) {
-                if (pauseInput) {
 
                     const QString axisName =
                         obj.value(
@@ -5307,7 +5313,6 @@ void addKeyboardVisualEntry(
                         axisName,
                         axisValue
                     );
-                }
 
                 continue;
             }
