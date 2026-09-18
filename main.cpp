@@ -609,6 +609,17 @@ public:
     ~KeyCast()
     {
         waylandPointer.stop();
+
+        if (process.state() != QProcess::NotRunning) {
+
+                process.terminate();
+
+                if (!process.waitForFinished(1000)) {
+                    process.kill();
+                    process.waitForFinished(1000);
+                }
+            }
+
         QSettings settings(
             QStringLiteral("KDE"),
             QStringLiteral("KDEKeyCast")
@@ -700,11 +711,96 @@ public:
             update();
         }
 
+        QRect closeButtonHitRect() const
+        {
+            return QRect(
+                width() - 30,
+                3,
+                24,
+                24
+            );
+        }
+
+        void paintCloseButton(QPainter &p)
+        {
+            const QRectF rect(
+                width() - 28,
+                5,
+                18,
+                18
+            );
+
+            const QColor background(32, 34, 40, 175);
+            const QColor border(255, 255, 255, 48);
+            const QColor shadow(0, 0, 0, 85);
+            const QColor iconColor(248, 249, 251, 238);
+
+            p.save();
+
+            p.setRenderHint(QPainter::Antialiasing, true);
+
+            p.setPen(Qt::NoPen);
+            p.setBrush(shadow);
+
+            p.drawRoundedRect(
+                rect.adjusted(0, 1, 0, 2),
+                7,
+                7
+            );
+
+            p.setBrush(background);
+
+            p.drawRoundedRect(
+                rect,
+                7,
+                7
+            );
+
+            p.setBrush(Qt::NoBrush);
+            p.setPen(QPen(border, 1.0));
+
+            p.drawRoundedRect(
+                rect.adjusted(0.5, 0.5, -0.5, -0.5),
+                6.5,
+                6.5
+            );
+
+            const QPointF center = rect.center();
+
+            p.setPen(
+                QPen(
+                    iconColor,
+                    1.5,
+                    Qt::SolidLine,
+                    Qt::RoundCap,
+                    Qt::RoundJoin
+                )
+            );
+
+            p.drawLine(
+                QPointF(center.x() - 3.5, center.y() - 3.5),
+                QPointF(center.x() + 3.5, center.y() + 3.5)
+            );
+
+            p.drawLine(
+                QPointF(center.x() + 3.5, center.y() - 3.5),
+                QPointF(center.x() - 3.5, center.y() + 3.5)
+            );
+
+            p.restore();
+        }
+
 protected:
 
     void mousePressEvent(QMouseEvent *event) override
     {
         if (event->button() == Qt::LeftButton) {
+
+            if (closeButtonHitRect().contains(event->pos())) {
+                QApplication::quit();
+                event->accept();
+                return;
+            }
 
             if (windowHandle()) {
 
@@ -726,6 +822,8 @@ protected:
         p.setRenderHint(QPainter::TextAntialiasing);
 
         trimVisualQueue();
+
+        paintCloseButton(p);
 
         paintStatusIndicators(p);
 
@@ -1811,7 +1909,7 @@ protected:
 
         const int size = 18;
         const int spacing = 5;
-        const int rightMargin = 10;
+        const int rightMargin = 33;
         const int topMargin = 5;
 
         const QColor background(32, 34, 40, 175);
@@ -6851,6 +6949,22 @@ void KeyCast::contextMenuEvent(
     );
 
     addDisplayDurationAction(menu);
+
+    menu.addSeparator();
+
+    QAction *quitAction =
+        menu.addAction(
+            QStringLiteral("Quit")
+        );
+
+    connect(
+        quitAction,
+        &QAction::triggered,
+        this,
+        []() {
+            QApplication::quit();
+        }
+    );
 
     menu.exec(
         event->globalPos()
