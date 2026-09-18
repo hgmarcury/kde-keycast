@@ -3318,6 +3318,9 @@ private:
     case XKB_KEY_Tab:
         return QStringLiteral("Tab");
 
+    case XKB_KEY_ISO_Left_Tab:
+        return QStringLiteral("Tab");
+
     case XKB_KEY_space:
         return QStringLiteral("Space");
 
