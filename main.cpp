@@ -39,9 +39,11 @@
 #include <QDBusConnection>
 #include <QDBusMessage>
 #include <QWidgetAction>
-#include <QHBoxLayout>
 #include <QLabel>
 #include <QSlider>
+#include <QDialog>
+#include <QVBoxLayout>
+#include <QPushButton>
 
 #include <wayland-client.h>
 
@@ -6643,6 +6645,117 @@ if (released) {
         update();
     }
 
+    void showShortcutHelp()
+    {
+        QDialog dialog(this);
+
+        dialog.setWindowTitle(
+            QStringLiteral("Keyboard shortcuts")
+        );
+
+        dialog.setModal(true);
+        dialog.setFixedWidth(360);
+
+        auto *layout =
+            new QVBoxLayout(&dialog);
+
+        layout->setContentsMargins(
+            20,
+            18,
+            20,
+            18
+        );
+
+        layout->setSpacing(8);
+
+        auto addShortcut =
+            [&](const QString &shortcut,
+                const QString &description)
+        {
+            auto *row =
+                new QHBoxLayout();
+
+            row->setSpacing(16);
+
+            auto *keyLabel =
+                new QLabel(shortcut, &dialog);
+
+            auto *descriptionLabel =
+                new QLabel(description, &dialog);
+
+            keyLabel->setMinimumWidth(110);
+            keyLabel->setAlignment(
+                Qt::AlignLeft |
+                Qt::AlignVCenter
+            );
+
+            keyLabel->setStyleSheet(
+                QStringLiteral(
+                    "font-weight: 600;"
+                )
+            );
+
+            descriptionLabel->setAlignment(
+                Qt::AlignLeft |
+                Qt::AlignVCenter
+            );
+
+            row->addWidget(keyLabel);
+            row->addWidget(descriptionLabel, 1);
+
+            layout->addLayout(row);
+        };
+
+        addShortcut(
+            QStringLiteral("Ctrl + Shift + M"),
+            QStringLiteral("Compact mode")
+        );
+
+        addShortcut(
+            QStringLiteral("Ctrl + Shift + T"),
+            QStringLiteral("Always on top")
+        );
+
+        addShortcut(
+            QStringLiteral("Ctrl + Shift + H"),
+            QStringLiteral("Hide keys")
+        );
+
+        addShortcut(
+            QStringLiteral("Ctrl + Shift + C"),
+            QStringLiteral("Click-through")
+        );
+
+        addShortcut(
+            QStringLiteral("Ctrl + Shift + P"),
+            QStringLiteral("Pause input")
+        );
+
+        layout->addSpacing(8);
+
+        auto *closeButton =
+            new QPushButton(
+                QStringLiteral("Close"),
+                &dialog
+            );
+
+        closeButton->setDefault(true);
+
+        connect(
+            closeButton,
+            &QPushButton::clicked,
+            &dialog,
+            &QDialog::accept
+        );
+
+        layout->addWidget(
+            closeButton,
+            0,
+            Qt::AlignRight
+        );
+
+        dialog.exec();
+    }
 
     /*
      * ---------------------------------------------------------------
@@ -6949,6 +7062,22 @@ void KeyCast::contextMenuEvent(
     );
 
     addDisplayDurationAction(menu);
+
+    menu.addSeparator();
+
+    QAction *shortcutsAction =
+        menu.addAction(
+            QStringLiteral("Keyboard shortcuts")
+        );
+
+    connect(
+        shortcutsAction,
+        &QAction::triggered,
+        this,
+        [this]() {
+            showShortcutHelp();
+        }
+    );
 
     menu.addSeparator();
 
