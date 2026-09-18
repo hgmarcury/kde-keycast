@@ -7,6 +7,7 @@
 #include <QApplication>
 #include <QWidget>
 #include <QPainter>
+#include <QPainterPath>
 #include <QTimer>
 #include <QProcess>
 #include <QJsonDocument>
@@ -725,6 +726,8 @@ protected:
         p.setRenderHint(QPainter::TextAntialiasing);
 
         trimVisualQueue();
+
+        paintStatusIndicators(p);
 
         if (visualQueue.isEmpty())
             return;
@@ -1737,6 +1740,331 @@ protected:
                 draw.width +
                 spacing;
         }
+    }
+
+    void paintStatusIndicators(QPainter &p)
+    {
+        enum class StatusIcon {
+            HideKeys,
+            Pause,
+            ClickThrough,
+            AlwaysOnTop,
+            OnlyShortcuts,
+            CapsLock,
+            NumLock,
+            ScrollLock
+        };
+
+        QVector<StatusIcon> items;
+
+        if (hideKeys)
+            items.append(StatusIcon::HideKeys);
+
+        if (pauseInput)
+            items.append(StatusIcon::Pause);
+
+        if (clickThrough)
+            items.append(StatusIcon::ClickThrough);
+
+        if (alwaysOnTop)
+            items.append(StatusIcon::AlwaysOnTop);
+
+        if (onlyShortcuts)
+            items.append(StatusIcon::OnlyShortcuts);
+
+        const bool capsLock =
+            xkbState &&
+            xkb_state_led_name_is_active(
+                xkbState,
+                XKB_LED_NAME_CAPS
+            ) > 0;
+
+        const bool numLock =
+            xkbState &&
+            xkb_state_led_name_is_active(
+                xkbState,
+                XKB_LED_NAME_NUM
+            ) > 0;
+
+        const bool scrollLock =
+            xkbState &&
+            xkb_state_led_name_is_active(
+                xkbState,
+                XKB_LED_NAME_SCROLL
+            ) > 0;
+
+        if (capsLock)
+            items.append(StatusIcon::CapsLock);
+
+        if (numLock)
+            items.append(StatusIcon::NumLock);
+
+        if (scrollLock)
+            items.append(StatusIcon::ScrollLock);
+
+        if (items.isEmpty())
+            return;
+
+        p.save();
+
+        p.setRenderHint(QPainter::Antialiasing, true);
+
+        const int size = 18;
+        const int spacing = 5;
+        const int rightMargin = 10;
+        const int topMargin = 5;
+
+        const QColor background(32, 34, 40, 175);
+        const QColor border(255, 255, 255, 48);
+        const QColor shadow(0, 0, 0, 85);
+        const QColor iconColor(248, 249, 251, 238);
+
+        const int totalWidth =
+            items.size() * size +
+            (items.size() - 1) * spacing;
+
+        int x = width() - rightMargin - totalWidth;
+
+        auto drawIcon =
+            [&](QPainter &painter,
+                const QRectF &rect,
+                StatusIcon icon)
+        {
+            const QPointF c = rect.center();
+
+            QPen pen(
+                iconColor,
+                1.35,
+                Qt::SolidLine,
+                Qt::RoundCap,
+                Qt::RoundJoin
+            );
+
+            painter.setPen(pen);
+            painter.setBrush(Qt::NoBrush);
+
+            switch (icon) {
+
+            case StatusIcon::HideKeys: {
+                // Candado
+                const QRectF body(
+                    c.x() - 4.0,
+                    c.y() - 0.5,
+                    8.0,
+                    6.5
+                );
+
+                painter.drawRoundedRect(body, 1.5, 1.5);
+
+                QPainterPath shackle;
+                shackle.moveTo(c.x() - 3.0, c.y() - 0.5);
+                shackle.lineTo(c.x() - 3.0, c.y() - 2.5);
+                shackle.cubicTo(
+                    c.x() - 3.0, c.y() - 5.5,
+                    c.x() + 3.0, c.y() - 5.5,
+                    c.x() + 3.0, c.y() - 2.5
+                );
+                shackle.lineTo(c.x() + 3.0, c.y() - 0.5);
+
+                painter.drawPath(shackle);
+                break;
+            }
+
+            case StatusIcon::Pause:
+                painter.drawRoundedRect(
+                    QRectF(c.x() - 3.8, c.y() - 5.0, 2.4, 10.0),
+                    1.0,
+                    1.0
+                );
+                painter.drawRoundedRect(
+                    QRectF(c.x() + 1.4, c.y() - 5.0, 2.4, 10.0),
+                    1.0,
+                    1.0
+                );
+                break;
+
+            case StatusIcon::ClickThrough: {
+                // Ratón
+                const QRectF mouse(
+                    c.x() - 4.0,
+                    c.y() - 5.5,
+                    8.0,
+                    11.0
+                );
+
+                painter.drawRoundedRect(mouse, 3.5, 3.5);
+                painter.drawLine(
+                    QPointF(c.x(), c.y() - 5.0),
+                    QPointF(c.x(), c.y() + 5.0)
+                );
+                painter.drawLine(
+                    QPointF(c.x(), c.y() - 2.5),
+                    QPointF(c.x(), c.y() - 0.5)
+                );
+                break;
+            }
+
+            case StatusIcon::AlwaysOnTop: {
+                // Pin
+                QPolygonF pin;
+                pin << QPointF(c.x(),     c.y() - 5.0)
+                    << QPointF(c.x() + 3.2, c.y() - 1.5)
+                    << QPointF(c.x() + 1.2, c.y() + 0.5)
+                    << QPointF(c.x() + 1.2, c.y() + 3.0)
+                    << QPointF(c.x() - 1.2, c.y() + 3.0)
+                    << QPointF(c.x() - 1.2, c.y() + 0.5)
+                    << QPointF(c.x() - 3.2, c.y() - 1.5);
+
+                painter.drawPolygon(pin);
+
+                painter.drawLine(
+                    QPointF(c.x(), c.y() + 3.0),
+                    QPointF(c.x(), c.y() + 5.5)
+                );
+                break;
+            }
+
+            case StatusIcon::OnlyShortcuts: {
+                // ↯
+                QPolygonF bolt;
+                bolt << QPointF(c.x() + 1.5, c.y() - 6.0)
+                     << QPointF(c.x() - 2.5, c.y() - 0.5)
+                     << QPointF(c.x(),      c.y() - 0.5)
+                     << QPointF(c.x() - 1.5, c.y() + 6.0)
+                     << QPointF(c.x() + 2.5, c.y() + 0.5)
+                     << QPointF(c.x(),      c.y() + 0.5);
+
+                painter.drawPolygon(bolt);
+                break;
+            }
+
+            case StatusIcon::CapsLock: {
+                // ⇪
+                painter.drawRoundedRect(
+                    QRectF(c.x() - 5.0, c.y() + 0.5, 10.0, 4.5),
+                    1.0,
+                    1.0
+                );
+
+                painter.drawLine(
+                    QPointF(c.x(), c.y() + 0.5),
+                    QPointF(c.x(), c.y() - 5.0)
+                );
+
+                painter.drawLine(
+                    QPointF(c.x(), c.y() - 5.0),
+                    QPointF(c.x() - 2.5, c.y() - 2.5)
+                );
+
+                painter.drawLine(
+                    QPointF(c.x(), c.y() - 5.0),
+                    QPointF(c.x() + 2.5, c.y() - 2.5)
+                );
+                break;
+            }
+
+            case StatusIcon::NumLock: {
+                // Pequeño teclado numérico
+                const qreal cell = 2.2;
+                const qreal gap = 1.0;
+                const qreal total = cell * 3 + gap * 2;
+                const qreal startX = c.x() - total / 2.0;
+                const qreal startY = c.y() - total / 2.0;
+
+                for (int row = 0; row < 3; ++row) {
+                    for (int col = 0; col < 3; ++col) {
+                        painter.drawRoundedRect(
+                            QRectF(
+                                startX + col * (cell + gap),
+                                startY + row * (cell + gap),
+                                cell,
+                                cell
+                            ),
+                            0.5,
+                            0.5
+                        );
+                    }
+                }
+                break;
+            }
+
+            case StatusIcon::ScrollLock: {
+                // ⇳
+                painter.drawLine(
+                    QPointF(c.x(), c.y() - 5.5),
+                    QPointF(c.x(), c.y() + 5.5)
+                );
+
+                painter.drawLine(
+                    QPointF(c.x(), c.y() - 5.5),
+                    QPointF(c.x() - 2.3, c.y() - 3.0)
+                );
+
+                painter.drawLine(
+                    QPointF(c.x(), c.y() - 5.5),
+                    QPointF(c.x() + 2.3, c.y() - 3.0)
+                );
+
+                painter.drawLine(
+                    QPointF(c.x(), c.y() + 5.5),
+                    QPointF(c.x() - 2.3, c.y() + 3.0)
+                );
+
+                painter.drawLine(
+                    QPointF(c.x(), c.y() + 5.5),
+                    QPointF(c.x() + 2.3, c.y() + 3.0)
+                );
+                break;
+            }
+            }
+        };
+
+        for (const StatusIcon icon : items) {
+
+            const QRectF rect(
+                x,
+                topMargin,
+                size,
+                size
+            );
+
+            // Sombra
+            p.setPen(Qt::NoPen);
+            p.setBrush(shadow);
+            p.drawRoundedRect(
+                rect.adjusted(0, 1, 0, 2),
+                7,
+                7
+            );
+
+            // Fondo fijo para ambos modos
+            p.setBrush(background);
+            p.drawRoundedRect(
+                rect,
+                7,
+                7
+            );
+
+            // Borde fijo
+            p.setBrush(Qt::NoBrush);
+            p.setPen(QPen(border, 1.0));
+            p.drawRoundedRect(
+                rect.adjusted(0.5, 0.5, -0.5, -0.5),
+                6.5,
+                6.5
+            );
+
+            // Icono
+            drawIcon(
+                p,
+                rect.adjusted(2.0, 2.0, -2.0, -2.0),
+                icon
+            );
+
+            x += size + spacing;
+        }
+
+        p.restore();
     }
 
     void contextMenuEvent(QContextMenuEvent *event) override;
@@ -4028,6 +4356,8 @@ private:
             group,
             group
         );
+
+        self->update();
     }
 
     static void keyboardRepeatInfo(
