@@ -468,6 +468,12 @@ public:
                 false
             ).toBool();
 
+        onlyShortcuts =
+            settings.value(
+                QStringLiteral("onlyShortcuts"),
+                false
+            ).toBool();
+
         QDBusConnection dbus =
             QDBusConnection::sessionBus();
 
@@ -630,6 +636,11 @@ public:
         settings.setValue(
             QStringLiteral("hideKeys"),
             hideKeys
+        );
+
+        settings.setValue(
+            QStringLiteral("onlyShortcuts"),
+            onlyShortcuts
         );
 
         if (waylandNotifier)
@@ -4637,6 +4648,9 @@ private:
     if (keys.isEmpty())
         return;
 
+    if (onlyShortcuts && !combination)
+        return;
+
     const qint64 now =
         QDateTime::currentMSecsSinceEpoch();
 
@@ -6164,6 +6178,40 @@ if (released) {
         update();
     }
 
+    void toggleOnlyShortcuts()
+    {
+        onlyShortcuts = !onlyShortcuts;
+
+        /*
+         * Al activar el modo eliminamos inmediatamente
+         * las entradas individuales que ya estén visibles.
+         *
+         * Las combinaciones se conservan.
+         */
+        if (onlyShortcuts) {
+
+            for (int i = visualQueue.size() - 1;
+                 i >= 0;
+                 --i) {
+
+                if (!visualQueue[i].combination)
+                    visualQueue.remove(i);
+            }
+        }
+
+        QSettings settings(
+            QStringLiteral("KDE"),
+            QStringLiteral("KDEKeyCast")
+        );
+
+        settings.setValue(
+            QStringLiteral("onlyShortcuts"),
+            onlyShortcuts
+        );
+
+        update();
+    }
+
 
     /*
      * ---------------------------------------------------------------
@@ -6209,6 +6257,7 @@ if (released) {
     bool pauseInput = false;
     bool clickThrough = false;
     qint64 displayDurationMs = 1800;
+    bool onlyShortcuts = false;
 
 };
 
@@ -6433,6 +6482,15 @@ void KeyCast::contextMenuEvent(
         hideKeys,
         [this](bool) {
             toggleHideKeys();
+        }
+    );
+
+    addSwitchAction(
+        menu,
+        QStringLiteral("Only shortcuts"),
+        onlyShortcuts,
+        [this](bool) {
+            toggleOnlyShortcuts();
         }
     );
 
