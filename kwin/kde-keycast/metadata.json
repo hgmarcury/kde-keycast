@@ -1,0 +1,18 @@
+{
+    "KPackageStructure": "KWin/Script",
+    "KPlugin": {
+        "Authors": [
+            {
+                "Name": "KDE KeyCast"
+            }
+        ],
+        "Name": "KDE KeyCast",
+        "Description": "KDE KeyCast window management",
+        "Icon": "preferences-system-windows",
+        "Id": "kde-keycast",
+        "Version": "1.0",
+        "License": "GPLv3"
+    },
+    "X-Plasma-API": "declarativescript",
+    "X-Plasma-MainScript": "ui/main.qml"
+}

@@ -478,29 +478,6 @@ public:
             106
         );
 
-
-        if (auto *screen = QGuiApplication::primaryScreen()) {
-            const QRect area = screen->availableGeometry();
-
-            move(
-                area.left() + (area.width() - width()) / 2,
-                area.top() + area.height() - height() - 80
-            );
-        }
-
-        const QVariant savedX =
-            settings.value(QStringLiteral("windowX"));
-
-        const QVariant savedY =
-            settings.value(QStringLiteral("windowY"));
-
-        if (savedX.isValid() && savedY.isValid()) {
-            move(
-                savedX.toInt(),
-                savedY.toInt()
-            );
-        }
-
         setupWaylandKeyboard();
 
 
@@ -602,6 +579,7 @@ public:
         mediaStateTimer.start();
 
         show();
+
     }
 
     ~KeyCast()
@@ -610,16 +588,6 @@ public:
         QSettings settings(
             QStringLiteral("KDE"),
             QStringLiteral("KDEKeyCast")
-        );
-
-        settings.setValue(
-            QStringLiteral("windowX"),
-            x()
-        );
-
-        settings.setValue(
-            QStringLiteral("windowY"),
-            y()
         );
 
         settings.setValue(
@@ -667,13 +635,6 @@ public:
     }
     public slots:
 
-        Q_SCRIPTABLE int processId() const
-        {
-            return static_cast<int>(
-                QCoreApplication::applicationPid()
-            );
-        }
-
         Q_SCRIPTABLE bool isAlwaysOnTop() const
         {
             return alwaysOnTop;
@@ -704,6 +665,7 @@ public:
 
             update();
         }
+
 protected:
 
     void mousePressEvent(QMouseEvent *event) override
@@ -4626,87 +4588,6 @@ private:
         return displayName(fallbackName);
     }
 
-    /*
-     * ---------------------------------------------------------------
-     * Posición de la ventana
-     * ---------------------------------------------------------------
-     */
-
-    void saveWindowPosition()
-    {
-        QSettings settings(
-            QStringLiteral("KDE"),
-            QStringLiteral("KDEKeyCast")
-        );
-
-        settings.setValue(
-            QStringLiteral("windowPosition"),
-            pos()
-        );
-    }
-
-    void restoreWindowPosition()
-    {
-        QSettings settings(
-            QStringLiteral("KDE"),
-            QStringLiteral("KDEKeyCast")
-        );
-
-        const QVariant value =
-            settings.value(
-                QStringLiteral("windowPosition")
-            );
-
-        if (value.isValid()) {
-            const QPoint savedPosition =
-                value.toPoint();
-
-            const QRect available =
-                QGuiApplication::primaryScreen()
-                    ? QGuiApplication::primaryScreen()
-                        ->availableGeometry()
-                    : QRect();
-
-            if (available.isValid()) {
-
-                const QRect restored(
-                    savedPosition,
-                    size()
-                );
-
-                if (available.intersects(restored)) {
-                    move(savedPosition);
-                    return;
-                }
-            }
-        }
-
-        /*
-         * Primera ejecución:
-         * posición inferior centrada.
-         */
-        if (auto *screen =
-                QGuiApplication::primaryScreen()) {
-
-            const QRect area =
-                screen->availableGeometry();
-
-            move(
-                area.left() +
-                    (area.width() - width()) / 2,
-                area.top() +
-                    area.height() -
-                    height() -
-                    80
-            );
-        }
-    }
-
-    /*
-     * ---------------------------------------------------------------
-     * Visual queue
-     * ---------------------------------------------------------------
-     */
     void trimVisualQueue()
     {
         const qint64 now =
@@ -5401,6 +5282,19 @@ void addKeyboardVisualEntry(
                 continue;
             }
 
+            if (pressed &&
+                keyName == QStringLiteral("KEY_C") &&
+                pressedModifiers.contains(
+                    QStringLiteral("KEY_LEFTCTRL")
+                ) &&
+                pressedModifiers.contains(
+                    QStringLiteral("KEY_LEFTSHIFT")
+                )) {
+
+                toggleClickThrough();
+                continue;
+            }
+
             const bool shift =
                   keyName ==
                       QStringLiteral("KEY_LEFTSHIFT") ||
@@ -6075,6 +5969,24 @@ if (released) {
         update();
     }
 
+    void toggleClickThrough()
+    {
+        clickThrough = !clickThrough;
+
+        if (windowHandle()) {
+            windowHandle()->setFlag(
+                Qt::WindowTransparentForInput,
+                clickThrough
+            );
+        }
+
+        qDebug()
+            << "KDE KeyCast: click-through ="
+            << clickThrough;
+
+        update();
+    }
+
 
     /*
      * ---------------------------------------------------------------
@@ -6118,6 +6030,7 @@ if (released) {
     bool lightMode = false;
     bool hideKeys = false;
     bool pauseInput = false;
+    bool clickThrough = false;
 
 };
 
@@ -6350,6 +6263,13 @@ void KeyCast::contextMenuEvent(
         QStringLiteral("Pause input"),
         pauseInput,
         [this](bool) { togglePauseInput(); }
+    );
+
+    addSwitchAction(
+        menu,
+        QStringLiteral("Click-through"),
+        clickThrough,
+        [this](bool) { toggleClickThrough(); }
     );
 
     addSwitchAction(
