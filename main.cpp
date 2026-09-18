@@ -37,6 +37,10 @@
 #include <QAbstractButton>
 #include <QDBusConnection>
 #include <QDBusMessage>
+#include <QWidgetAction>
+#include <QHBoxLayout>
+#include <QLabel>
+#include <QSlider>
 
 #include <wayland-client.h>
 
@@ -439,6 +443,19 @@ public:
                 true
             ).toBool();
 
+        displayDurationMs =
+            settings.value(
+                QStringLiteral("displayDurationMs"),
+                1800
+            ).toLongLong();
+
+        displayDurationMs =
+            qBound<qint64>(
+                static_cast<qint64>(500),
+                displayDurationMs,
+                static_cast<qint64>(5000)
+            );
+
         lightMode =
             settings.value(
                 QStringLiteral("lightMode"),
@@ -598,6 +615,11 @@ public:
         settings.setValue(
             QStringLiteral("alwaysOnTop"),
             alwaysOnTop
+        );
+
+        settings.setValue(
+            QStringLiteral("displayDurationMs"),
+            displayDurationMs
         );
 
         settings.setValue(
@@ -3877,7 +3899,7 @@ private:
                     QDateTime::currentMSecsSinceEpoch();
 
                 entry.expires =
-                    entry.created + 1800;
+                    entry.created + displayDurationMs;
             }
 
             resetComposeSequence();
@@ -3912,7 +3934,7 @@ private:
 
                 entry.expires =
                     QDateTime::currentMSecsSinceEpoch()
-                    + 1800;
+                    + displayDurationMs;
             }
 
             resetComposeSequence();
@@ -4649,7 +4671,7 @@ private:
             last.keys == keys) {
 
             last.repeatCount++;
-            last.expires = now + 1800;
+            last.expires = now + displayDurationMs;
 
             update();
 
@@ -4661,7 +4683,7 @@ private:
 
     entry.keys = keys;
     entry.created = now;
-    entry.expires = now + 1800;
+    entry.expires = now + displayDurationMs;
     entry.combination = combination;
     entry.repeatCount = 1;
     entry.linuxKeyCode =
@@ -4859,7 +4881,7 @@ void addKeyboardVisualEntry(
 
                     entry.expires =
                         QDateTime::currentMSecsSinceEpoch()
-                        + 1800;
+                        + displayDurationMs;
 
                     update();
 
@@ -4881,7 +4903,7 @@ void addKeyboardVisualEntry(
                     QDateTime::currentMSecsSinceEpoch();
 
                 entry.expires =
-                    entry.created + 1800;
+                    entry.created + displayDurationMs;
 
                 update();
 
@@ -4898,7 +4920,7 @@ void addKeyboardVisualEntry(
                 QDateTime::currentMSecsSinceEpoch();
 
             entry.expires =
-                entry.created + 1800;
+                entry.created + displayDurationMs;
 
             entry.combination = true;
             entry.repeatCount = 1;
@@ -5885,6 +5907,161 @@ if (released) {
         }
     }
 
+    void addDisplayDurationAction(QMenu &menu)
+           {
+               auto *action =
+                   new QWidgetAction(&menu);
+
+               auto *container =
+                   new QWidget(&menu);
+
+               auto *layout =
+                   new QHBoxLayout(container);
+
+               layout->setContentsMargins(
+                   10,
+                   2,
+                   10,
+                   2
+               );
+
+               layout->setSpacing(8);
+
+               auto *label =
+                   new QLabel(
+                       QStringLiteral("Display duration"),
+                       container
+                   );
+
+               auto *slider =
+                   new QSlider(
+                       Qt::Horizontal,
+                       container
+                   );
+
+               auto *valueLabel =
+                   new QLabel(container);
+
+               /*
+                * 5..50 = 0.5..5.0 segundos
+                */
+               slider->setRange(
+                   5,
+                   50
+               );
+
+               slider->setValue(
+                   static_cast<int>(
+                       displayDurationMs / 100
+                   )
+               );
+
+               slider->setFixedWidth(92);
+
+               valueLabel->setFixedWidth(34);
+               valueLabel->setAlignment(
+                   Qt::AlignRight | Qt::AlignVCenter
+               );
+
+               auto updateValue =
+                   [slider, valueLabel]() {
+
+                       const double seconds =
+                           slider->value() / 10.0;
+
+                       valueLabel->setText(
+                           QStringLiteral("%1 s")
+                               .arg(
+                                   seconds,
+                                   0,
+                                   'f',
+                                   1
+                               )
+                       );
+                   };
+
+               updateValue();
+
+               /*
+                * Mismo lenguaje visual que nuestros switches.
+                */
+               const QColor track =
+                   lightMode
+                       ? QColor(205, 208, 213)
+                       : QColor(68, 71, 78);
+
+               const QColor active =
+                   lightMode
+                       ? QColor(70, 72, 78)
+                       : QColor(220, 222, 226);
+
+               const QColor handle =
+                   lightMode
+                       ? QColor(45, 47, 52)
+                       : QColor(245, 246, 248);
+
+               slider->setStyleSheet(
+                   QString(
+                       "QSlider::groove:horizontal {"
+                       " height: 4px;"
+                       " background: %1;"
+                       " border-radius: 2px;"
+                       "}"
+                       "QSlider::sub-page:horizontal {"
+                       " background: %2;"
+                       " border-radius: 2px;"
+                       "}"
+                       "QSlider::add-page:horizontal {"
+                       " background: %1;"
+                       " border-radius: 2px;"
+                       "}"
+                       "QSlider::handle:horizontal {"
+                       " width: 12px;"
+                       " height: 12px;"
+                       " margin: -4px 0;"
+                       " border-radius: 6px;"
+                       " background: %3;"
+                       "}"
+                   ).arg(
+                       track.name(),
+                       active.name(),
+                       handle.name()
+                   )
+               );
+
+               connect(
+                   slider,
+                   &QSlider::valueChanged,
+                   this,
+                   [this, updateValue](int value) {
+
+                       displayDurationMs =
+                           static_cast<qint64>(value) *
+                           100;
+
+                       updateValue();
+
+                       QSettings settings(
+                           QStringLiteral("KDE"),
+                           QStringLiteral("KDEKeyCast")
+                       );
+
+                       settings.setValue(
+                           QStringLiteral("displayDurationMs"),
+                           displayDurationMs
+                       );
+                   }
+               );
+
+               layout->addWidget(label);
+               layout->addWidget(slider);
+               layout->addWidget(valueLabel);
+
+               action->setDefaultWidget(container);
+
+               menu.addAction(action);
+           }
+
     void toggleAlwaysOnTop()
     {
         QDBusMessage message =
@@ -6031,6 +6208,7 @@ if (released) {
     bool hideKeys = false;
     bool pauseInput = false;
     bool clickThrough = false;
+    qint64 displayDurationMs = 1800;
 
 };
 
@@ -6280,6 +6458,8 @@ void KeyCast::contextMenuEvent(
             toggleAlwaysOnTop();
         }
     );
+
+    addDisplayDurationAction(menu);
 
     menu.exec(
         event->globalPos()
