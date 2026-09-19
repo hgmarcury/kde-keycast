@@ -44,6 +44,7 @@
 #include <QDialog>
 #include <QVBoxLayout>
 #include <QPushButton>
+#include <QIcon>
 
 #include <wayland-client.h>
 
@@ -464,6 +465,8 @@ public:
                 QStringLiteral("lightMode"),
                 false
             ).toBool();
+
+        updateApplicationIcon();
 
         hideKeys =
             settings.value(
@@ -6568,6 +6571,8 @@ if (released) {
             << "KDE KeyCast: light mode ="
             << lightMode;
 
+        updateApplicationIcon();
+
         update();
     }
 
@@ -6862,6 +6867,17 @@ if (released) {
         );
 
         dialog.exec();
+    }
+    void updateApplicationIcon()
+    {
+        const QIcon icon(
+            lightMode
+                ? QStringLiteral(":/icons/kde-keycast-light.svg")
+                : QStringLiteral(":/icons/kde-keycast-dark.svg")
+        );
+
+        setWindowIcon(icon);
+        QApplication::setWindowIcon(icon);
     }
 
     /*
@@ -7244,6 +7260,18 @@ const wl_keyboard_listener KeyCast::keyboardListener = {
 int main(int argc, char **argv)
 {
     QApplication app(argc, argv);
+
+    app.setApplicationName(
+        QStringLiteral("kde-keycast")
+    );
+
+    app.setApplicationDisplayName(
+        QStringLiteral("KDE KeyCast")
+    );
+
+    app.setDesktopFileName(
+        QStringLiteral("kde-keycast")
+    );
 
     KeyCast window;
 

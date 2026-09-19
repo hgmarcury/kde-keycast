@@ -1,0 +1,7 @@
+<RCC>
+    <qresource prefix="/">
+        <file alias="icons/kde-keycast-light.svg">resources/icons/kde-keycast-light.svg</file>
+
+        <file alias="icons/kde-keycast-dark.svg">resources/icons/kde-keycast-dark.svg</file>
+    </qresource>
+</RCC>

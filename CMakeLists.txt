@@ -1,3 +1,4 @@
+include(GNUInstallDirs)
 cmake_minimum_required(VERSION 3.16)
 
 project(kde-keycast LANGUAGES CXX)
@@ -26,6 +27,7 @@ pkg_check_modules(WAYLAND REQUIRED
 
 add_executable(kde-keycast
     main.cpp
+    resources.qrc
 
     src/input/InputEvent.h
     src/input/InputBackend.h
@@ -59,4 +61,20 @@ target_link_libraries(kde-keycast PRIVATE
     Qt6::DBus
     ${XKBCOMMON_LIBRARIES}
     ${WAYLAND_LIBRARIES}
+)
+
+install(
+    TARGETS kde-keycast
+    RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
+)
+
+install(
+    FILES kde-keycast.desktop
+    DESTINATION ${CMAKE_INSTALL_DATAROOTDIR}/applications
+)
+
+install(
+    FILES ${CMAKE_CURRENT_SOURCE_DIR}/resources/icons/kde-keycast-light.svg
+    DESTINATION ${CMAKE_INSTALL_DATAROOTDIR}/icons/hicolor/scalable/apps
+    RENAME kde-keycast.svg
 )
