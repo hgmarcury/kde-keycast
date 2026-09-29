@@ -25,7 +25,11 @@ if [[ -z "$QDBUS" ]]; then
     exit 1
 fi
 
-KWIN_PACKAGE="$PROJECT_ROOT/kwin/kde-keycast"
+if [[ $# -ge 1 ]]; then
+    KWIN_PACKAGE="$1"
+else
+    KWIN_PACKAGE="$PROJECT_ROOT/kwin/kde-keycast"
+fi
 
 if [[ ! -d "$KWIN_PACKAGE" ]]; then
     echo "ERROR: KWin package not found:"

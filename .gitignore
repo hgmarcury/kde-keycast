@@ -53,3 +53,4 @@ CMakeLists.txt.*
 # ============================================================
 
 /packaging/appimage/tools/
+/dist/

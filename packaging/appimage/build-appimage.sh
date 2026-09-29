@@ -48,6 +48,11 @@ echo "==> Installing KDE KeyCast into AppDir..."
 cmake --install "$BUILD_DIR" \
     --prefix "$APPDIR/usr"
 
+install \
+    -m 0755 \
+    "$PROJECT_ROOT/packaging/install-kde-keycast.sh" \
+    "$APPDIR/usr/bin/install-kde-keycast"
+
 echo
 echo "==> Adding required Qt Wayland components..."
 
@@ -125,6 +130,11 @@ do
     fi
 done
 
+if [[ "${1:-}" == "--install" ]]; then
+    exec "$APPDIR/usr/bin/install-kde-keycast" \
+        "$APPDIR/usr/share/kwin/scripts/kde-keycast"
+fi
+
 exec "$APPDIR/usr/bin/kde-keycast" "$@"
 EOF
 
@@ -145,5 +155,17 @@ echo
 echo "==> AppDir ready for inspection."
 echo "    AppDir: $APPDIR"
 echo
-echo "    AppImage generation is intentionally not performed yet."
-echo "    We will inspect bundled libraries first."
+echo "==> Generating AppImage..."
+
+APPIMAGE="$DIST_DIR/kde-keycast-x86_64.AppImage"
+
+"$APPIMAGETOOL" \
+    "$APPDIR" \
+    "$APPIMAGE"
+
+echo
+echo "==> AppImage created:"
+echo "    $APPIMAGE"
+echo
+echo "==> AppImage size:"
+du -h "$APPIMAGE"
