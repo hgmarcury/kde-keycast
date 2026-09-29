@@ -1,8 +1,12 @@
-include(GNUInstallDirs)
+
 cmake_minimum_required(VERSION 3.16)
 
 project(kde-keycast LANGUAGES CXX)
 
+find_package(ECM REQUIRED NO_MODULE)
+set(CMAKE_MODULE_PATH ${ECM_MODULE_PATH})
+
+include(KDEInstallDirs)
 
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 set(CMAKE_CXX_STANDARD 17)
@@ -64,6 +68,10 @@ add_executable(kde-keycast
     src/ui/ContextMenu.cpp
 )
 
+target_compile_definitions(kde-keycast PRIVATE
+    KDE_KEYCAST_LIBEXECDIR="${KDE_INSTALL_LIBEXECDIR}"
+)
+
 target_include_directories(kde-keycast PRIVATE
     ${XKBCOMMON_INCLUDE_DIRS}
     ${WAYLAND_INCLUDE_DIRS}
@@ -96,7 +104,7 @@ install(
     PROGRAMS
         ${CMAKE_CURRENT_SOURCE_DIR}/vendor/showmethekey-cli/showmethekey-cli
     DESTINATION
-        ${CMAKE_INSTALL_LIBDIR}/kde-keycast
+        ${KDE_INSTALL_LIBEXECDIR}/kde-keycast
 )
 
 install(

@@ -12,12 +12,10 @@
 
 namespace KDEKeyCast {
 
-ShowMeTheKeyBackend::ShowMeTheKeyBackend(
-    QString executable)
-    : QObject(nullptr)
-    , executable_(std::move(executable))
-{
-}
+    ShowMeTheKeyBackend::ShowMeTheKeyBackend()
+        : QObject(nullptr)
+    {
+    }
 
 ShowMeTheKeyBackend::~ShowMeTheKeyBackend()
 {
@@ -41,13 +39,19 @@ bool ShowMeTheKeyBackend::start(EventHandler handler)
                 )
             );
 
+    const QString libexecDir =
+        QStringLiteral(KDE_KEYCAST_LIBEXECDIR);
+
     const QString installedBackend =
-        QDir(QCoreApplication::applicationDirPath())
-            .absoluteFilePath(
-                QStringLiteral(
-                    "../lib/kde-keycast/showmethekey-cli"
-                )
-            );
+        QFileInfo(libexecDir).isAbsolute()
+            ? QDir(libexecDir).absoluteFilePath(
+                  QStringLiteral("kde-keycast/showmethekey-cli")
+              )
+            : QDir(QCoreApplication::applicationDirPath())
+                  .absoluteFilePath(
+                      QStringLiteral("../%1/kde-keycast/showmethekey-cli")
+                          .arg(libexecDir)
+                  );
 
     if (QFileInfo::exists(projectBackend) &&
         QFileInfo(projectBackend).isExecutable()) {
@@ -78,7 +82,6 @@ bool ShowMeTheKeyBackend::start(EventHandler handler)
 
         return false;
     }
-
     process_.setProgram(executable);
 
     connect(
@@ -109,8 +112,7 @@ bool ShowMeTheKeyBackend::start(EventHandler handler)
                     }
                 }
             );
-        },
-        Qt::UniqueConnection
+        }
     );
 
     process_.start();

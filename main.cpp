@@ -238,42 +238,7 @@ public:
         setupWaylandKeyboard();
 
 
-        {
-            const QString projectBackend =
-                QDir(QCoreApplication::applicationDirPath())
-                    .absoluteFilePath(
-                        QStringLiteral(
-                            "../vendor/showmethekey-cli/showmethekey-cli"
-                        )
-                    );
-
-            const QString systemBackend =
-                QStringLiteral(
-                    "/usr/bin/showmethekey-cli"
-                );
-
-            if (QFileInfo::exists(projectBackend) &&
-                QFileInfo(projectBackend).isExecutable()) {
-
-                process.setProgram(projectBackend);
-
-                qDebug()
-                    << "KDE KeyCast: usando backend extendido:"
-                    << projectBackend;
-
-            } else {
-
-                process.setProgram(systemBackend);
-
-                qDebug()
-                    << "KDE KeyCast: usando backend del sistema:"
-                    << systemBackend;
-            }
-        }
-
-
-
-        inputReader.setEventHandler(
+        showMeTheKeyBackend.start(
             [this](const KDEKeyCast::InputEvent &event) {
 
                 if (event.isKeyboard()) {
@@ -284,12 +249,10 @@ public:
                 if (event.isMouse()) {
 
                     if (event.isWheel()) {
-
                         addMouseWheel(
                             event.keyName,
                             event.wheelDelta
                         );
-
                         return;
                     }
 
@@ -302,42 +265,6 @@ public:
                 }
             }
         );
-
-        connect(
-            &process,
-            &QProcess::readyReadStandardOutput,
-            this,
-            [this] {
-                while (process.canReadLine()) {
-
-                    inputReader.processLine(
-                        process.readLine()
-                    );
-                }
-            }
-        );
-
-
-        connect(
-            &process,
-            qOverload<int, QProcess::ExitStatus>(&QProcess::finished),
-            this,
-            [this](int, QProcess::ExitStatus) {
-                QTimer::singleShot(1000, this, [this] {
-                    if (process.state() == QProcess::NotRunning)
-                        process.start();
-                });
-            }
-        );
-
-        process.start();
-
-        if (!process.waitForStarted(1500)) {
-            qWarning(
-                "KDE KeyCast: no se pudo iniciar showmethekey-cli: %s",
-                qPrintable(process.errorString())
-            );
-        }
 
         timer.setInterval(16);
 
@@ -382,17 +309,6 @@ public:
     ~KeyCast()
     {
         waylandPointer.stop();
-
-        if (process.state() != QProcess::NotRunning) {
-
-                process.terminate();
-
-                if (!process.waitForFinished(1000)) {
-                    process.kill();
-                    process.waitForFinished(1000);
-                }
-            }
-
 
         settings.setCompactMode(
             compactMode
@@ -5675,8 +5591,7 @@ void addKeyboardVisualEntry(
     QStringList composeSequence;
     QVector<QStringList> composeKeyLegends;
 
-    QProcess process;
-    KDEKeyCast::InputReader inputReader;
+    KDEKeyCast::ShowMeTheKeyBackend showMeTheKeyBackend;
 
     KDEKeyCast::Settings settings;
 

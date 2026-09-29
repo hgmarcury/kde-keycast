@@ -15,10 +15,7 @@ namespace KDEKeyCast {
         Q_OBJECT
 
     public:
-        explicit ShowMeTheKeyBackend(
-            QString executable =
-                QStringLiteral("showmethekey-cli")
-        );
+        explicit ShowMeTheKeyBackend();
 
         ~ShowMeTheKeyBackend() override;
 
@@ -31,7 +28,6 @@ namespace KDEKeyCast {
         void readInput();
         void handleLine(const QByteArray &line);
 
-        QString executable_;
         QProcess process_;
         EventHandler handler_;
     };
