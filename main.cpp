@@ -3683,7 +3683,6 @@ private:
                         false;
 
                 resetComposeSequence();
-                composeKeyLegends.clear();
 
                 addKeyboardVisualEntry(
                     QStringList{
