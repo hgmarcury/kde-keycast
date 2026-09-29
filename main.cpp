@@ -59,6 +59,7 @@
 #include "src/input/InputEvent.h"
 #include "src/core/VisualEntry.h"
 #include "src/xkb/XkbManager.h"
+#include "src/wayland/WaylandConnection.h"
 #include "src/wayland/WaylandKeyboard.h"
 #include "src/input/ShowMeTheKeyBackend.h"
 #include "src/settings/Settings.h"
@@ -338,21 +339,6 @@ public:
         }
 
         waylandKeyboard.stop();
-
-        if (seat) {
-            wl_seat_destroy(seat);
-            seat = nullptr;
-        }
-
-        if (registry) {
-            wl_registry_destroy(registry);
-            registry = nullptr;
-        }
-
-        if (display) {
-            wl_display_disconnect(display);
-            display = nullptr;
-        }
 
 
         resetComposeState();
@@ -3578,52 +3564,6 @@ private:
      * ---------------------------------------------------------------
      */
 
-    static void registryGlobal(
-        void *data,
-        wl_registry *registry,
-        uint32_t name,
-        const char *interface,
-        uint32_t version
-    )
-    {
-        KeyCast *self =
-            static_cast<KeyCast *>(data);
-
-        if (std::strcmp(
-                interface,
-                wl_seat_interface.name) == 0) {
-
-            const uint32_t bindVersion =
-                qMin<uint32_t>(
-                    version,
-                    7
-                );
-
-            self->seat =
-                static_cast<wl_seat *>(
-                    wl_registry_bind(
-                        registry,
-                        name,
-                        &wl_seat_interface,
-                        bindVersion
-                    )
-                );
-
-            qDebug()
-                << "KDE KeyCast: wl_seat encontrado";
-        }
-    }
-
-    static void registryGlobalRemove(
-        void *,
-        wl_registry *,
-        uint32_t
-    )
-    {
-    }
-
-    static const wl_registry_listener registryListener;
-
     bool handleComposeKey(
         int linuxKeyCode,
         const QString &visualName
@@ -3885,66 +3825,15 @@ private:
 
     void setupWaylandKeyboard()
     {
-        display =
-            wl_display_connect(nullptr);
-
-        if (!display) {
-
-            qWarning(
-                "KDE KeyCast: no se pudo conectar a Wayland"
-            );
-
+        if (!waylandConnection.connect())
             return;
-        }
-
-        registry =
-            wl_display_get_registry(display);
-
-        if (!registry) {
-
-            qWarning(
-                "KDE KeyCast: no se pudo obtener wl_registry"
-            );
-
-            wl_display_disconnect(display);
-            display = nullptr;
-
-            return;
-        }
-
-        wl_registry_add_listener(
-            registry,
-            &registryListener,
-            this
-        );
-
-        /*
-         * Primer roundtrip:
-         *
-         * obtiene wl_seat.
-         */
-        if (wl_display_roundtrip(display) < 0) {
-
-            qWarning(
-                "KDE KeyCast: fallo en wl_display_roundtrip"
-            );
-
-            return;
-        }
-
-        if (!seat) {
-
-            qWarning(
-                "KDE KeyCast: Wayland no proporcionó ningún wl_seat"
-            );
-
-            return;
-        }
 
         /*
          * Obtenemos el teclado del seat.
          */
-        if (!waylandKeyboard.start(seat)) {
+        if (!waylandKeyboard.start(
+                waylandConnection.seat()
+            )) {
             qWarning()
                 << "KDE KeyCast: no se pudo obtener wl_keyboard";
             return;
@@ -3965,7 +3854,9 @@ private:
          * fuerza la llegada del keymap, modifiers iniciales y repeat
          * info.
          */
-        if (wl_display_roundtrip(display) < 0) {
+        if (wl_display_roundtrip(
+                waylandConnection.display()
+            ) < 0) {
 
             qWarning(
                 "KDE KeyCast: fallo obteniendo el keymap Wayland"
@@ -3979,7 +3870,7 @@ private:
          * bloquear el event loop de Qt.
          */
         const int fd =
-            wl_display_get_fd(display);
+            waylandConnection.socketFd();
 
         if (fd >= 0) {
 
@@ -3997,16 +3888,18 @@ private:
                [this](qintptr) {
 
 
-                    if (!display)
+                    if (!waylandConnection.display())
                         return;
 
                     if (wl_display_dispatch_pending(
-                            display) < 0) {
+                            waylandConnection.display()) < 0) {
 
                         return;
                     }
 
-                    wl_display_flush(display);
+                    wl_display_flush(
+                        waylandConnection.display()
+                    );
                 }
             );
         }
@@ -5559,9 +5452,7 @@ void addKeyboardVisualEntry(
      * ---------------------------------------------------------------
      */
 
-    wl_display *display = nullptr;
-    wl_registry *registry = nullptr;
-    wl_seat *seat = nullptr;
+    WaylandConnection waylandConnection;
 
     WaylandKeyboard waylandKeyboard;
     WaylandPointer waylandPointer;
@@ -5891,11 +5782,6 @@ void KeyCast::contextMenuEvent(
  * Wayland listener definitions
  * ---------------------------------------------------------------
  */
-
-const wl_registry_listener KeyCast::registryListener = {
-    KeyCast::registryGlobal,
-    KeyCast::registryGlobalRemove
-};
 
 int main(int argc, char **argv)
 {

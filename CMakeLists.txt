@@ -57,6 +57,8 @@ add_executable(kde-keycast
     src/mouse/WaylandPointer.h
     src/mouse/WaylandPointer.cpp
 
+    src/wayland/WaylandConnection.h
+    src/wayland/WaylandConnection.cpp
     src/wayland/WaylandKeyboard.h
     src/wayland/WaylandKeyboard.cpp
 
