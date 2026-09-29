@@ -6,6 +6,14 @@
 #include <xkbcommon/xkbcommon.h>
 #include <xkbcommon/xkbcommon-compose.h>
 
+enum class ComposeResult
+{
+    Ignored,
+    Composing,
+    Composed,
+    Cancelled
+};
+
 class XkbManager
 {
 public:
@@ -45,10 +53,10 @@ public:
 
     xkb_keysym_t keySym(int linuxCode) const;
 
-    xkb_compose_state *composeState() const;
-
     void resetComposeState();
     void resetComposeSequence();
+
+    ComposeResult feedComposeKey(xkb_keysym_t keysym);
 
 private:
     xkb_keymap *xkbKeymap = nullptr;

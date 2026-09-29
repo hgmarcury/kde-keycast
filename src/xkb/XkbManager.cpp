@@ -646,11 +646,6 @@ QStringList XkbManager::secondaryLegends(
     return result;
 }
 
-xkb_compose_state *XkbManager::composeState() const
-{
-    return xkbComposeState;
-}
-
 void XkbManager::resetComposeState()
 {
     if (xkbComposeState) {
@@ -672,4 +667,44 @@ void XkbManager::resetComposeSequence()
         xkb_compose_state_reset(xkbComposeState);
 
     composeSequence.clear();
+}
+
+ComposeResult
+XkbManager::feedComposeKey(xkb_keysym_t keysym)
+{
+    if (!xkbComposeState)
+        return ComposeResult::Ignored;
+
+    const xkb_compose_feed_result result =
+        xkb_compose_state_feed(
+            xkbComposeState,
+            keysym
+        );
+
+    if (result ==
+        XKB_COMPOSE_FEED_IGNORED) {
+
+        return ComposeResult::Ignored;
+    }
+
+    const xkb_compose_status status =
+        xkb_compose_state_get_status(
+            xkbComposeState
+        );
+
+    switch (status) {
+
+    case XKB_COMPOSE_COMPOSING:
+        return ComposeResult::Composing;
+
+    case XKB_COMPOSE_COMPOSED:
+        return ComposeResult::Composed;
+
+    case XKB_COMPOSE_CANCELLED:
+        return ComposeResult::Cancelled;
+
+    case XKB_COMPOSE_NOTHING:
+    default:
+        return ComposeResult::Ignored;
+    }
 }

@@ -12,7 +12,6 @@
 #include <unistd.h>
 #include <wayland-client.h>
 #include <xkbcommon/xkbcommon.h>
-#include <xkbcommon/xkbcommon-compose.h>
 
 // ============================================================================
 // 2. LIBRERÍAS DE QT (Esto le enseña a Clangd qué es QString antes de abrir tus archivos)
@@ -3630,11 +3629,8 @@ private:
         const QString &visualName
     )
     {
-        if (!xkb.composeState() ||
-            visualName.isEmpty()) {
-
+        if (visualName.isEmpty())
             return false;
-        }
 
         if (!xkb.isReady())
             return false;
@@ -3645,23 +3641,14 @@ private:
         if (keysym == XKB_KEY_NoSymbol)
             return false;
 
-        const xkb_compose_feed_result result =
-            xkb_compose_state_feed(
-                xkb.composeState(),
-                keysym
-            );
+        const ComposeResult status =
+            xkb.feedComposeKey(keysym);
 
-        if (result ==
-            XKB_COMPOSE_FEED_IGNORED) {
+        if (status ==
+            ComposeResult::Ignored) {
 
             return false;
         }
-
-        const xkb_compose_status status =
-            xkb_compose_state_get_status(
-                xkb.composeState()
-            );
-
         /*
          * -----------------------------------------------------------
          * COMPOSING
@@ -3669,7 +3656,7 @@ private:
          */
 
         if (status ==
-            XKB_COMPOSE_COMPOSING) {
+            ComposeResult::Composing) {
 
             composeSequence.append(
                 visualName
@@ -3724,7 +3711,7 @@ private:
          */
 
         if (status ==
-            XKB_COMPOSE_COMPOSED) {
+            ComposeResult::Composed) {
 
             composeSequence.append(
                 visualName
@@ -3828,7 +3815,7 @@ private:
          */
 
         if (status ==
-            XKB_COMPOSE_CANCELLED) {
+            ComposeResult::Cancelled) {
 
             const int index =
                 findComposePendingEntry();
@@ -4059,10 +4046,7 @@ private:
 
     void resetComposeSequence()
     {
-        if (xkb.composeState())
-            xkb_compose_state_reset(
-                xkb.composeState()
-            );
+        xkb.resetComposeSequence();
 
         composeSequence.clear();
         composeKeyLegends.clear();
