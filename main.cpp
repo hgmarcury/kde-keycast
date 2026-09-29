@@ -3788,41 +3788,6 @@ private:
         return false;
     }
 
-    void handleWaylandPointerEvent(
-        const KDEKeyCast::InputEvent &event)
-    {
-        if (!event.isMouse())
-            return;
-
-        if (event.action ==
-            KDEKeyCast::InputAction::Wheel) {
-
-            if (event.text.isEmpty())
-                return;
-
-            /*
-             * Reutilizamos el mismo camino visual que ya utiliza
-             * el proyecto para los eventos de ratón.
-             *
-             * No creamos un renderer diferente para la rueda:
-             * teclado, botones y rueda terminan en VisualEntry.
-             */
-            addMouseButton(event.text);
-            return;
-        }
-
-        /*
-         * Los botones físicos se incorporarán al mismo pipeline.
-         * De momento sólo mostramos pulsaciones.
-         */
-        if (event.action ==
-            KDEKeyCast::InputAction::Pressed) {
-
-            if (!event.keyName.isEmpty())
-                addMouseButton(event.keyName);
-        }
-    }
-
     void setupWaylandKeyboard()
     {
         if (!waylandConnection.connect())
