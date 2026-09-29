@@ -1,0 +1,11 @@
+#!/usr/bin/env xdg-open
+[Desktop Entry]
+Version=1.5
+Type=Application
+Name=KDE KeyCast
+Comment=Keyboard and mouse visualizer for KDE Plasma on Wayland
+Exec=kde-keycast
+Icon=kde-keycast
+Terminal=false
+Categories=Utility;
+StartupNotify=false

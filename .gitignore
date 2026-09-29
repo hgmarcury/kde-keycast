@@ -43,3 +43,7 @@ main-v*.cpp
 main-before-*.cpp
 main.cpp.*
 CMakeLists.txt.*
+
+# ante-cli
+.ante
+.txt/*

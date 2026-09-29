@@ -1,6 +1,7 @@
 #pragma once
 
 #include <QString>
+#include <QByteArray>
 
 #include <xkbcommon/xkbcommon.h>
 

@@ -1,9 +1,22 @@
-#include "src/mouse/WaylandPointer.h"
+
+// ============================================================================
+// 1. LIBRERÍAS ESTÁNDAR DE C++ Y DEL SISTEMA (Linux, Wayland, XKB, etc.)
+// ============================================================================
 #include <linux/input-event-codes.h>
 #include <functional>
 #include <algorithm>
 #include <cerrno>
 #include <cstring>
+#include <limits>
+#include <sys/mman.h>
+#include <unistd.h>
+#include <wayland-client.h>
+#include <xkbcommon/xkbcommon.h>
+#include <xkbcommon/xkbcommon-compose.h>
+
+// ============================================================================
+// 2. LIBRERÍAS DE QT (Esto le enseña a Clangd qué es QString antes de abrir tus archivos)
+// ============================================================================
 #include <QApplication>
 #include <QWidget>
 #include <QPainter>
@@ -34,374 +47,27 @@
 #include <QWidgetAction>
 #include <QHBoxLayout>
 #include <QLabel>
-#include <QCheckBox>
 #include <QAbstractButton>
 #include <QDBusConnection>
 #include <QDBusMessage>
-#include <QWidgetAction>
-#include <QLabel>
 #include <QSlider>
-#include <QDialog>
-#include <QVBoxLayout>
-#include <QPushButton>
 #include <QIcon>
 
-#include <wayland-client.h>
-
-#include <xkbcommon/xkbcommon.h>
-#include <xkbcommon/xkbcommon-compose.h>
-#include <limits>
-
-#include <sys/mman.h>
-#include <unistd.h>
-
-#include <cerrno>
-#include <cstring>
-
-struct VisualEntry {
-    QStringList keys;
-    QStringList keySecondaryLegends;
-    qint64 created = 0;
-    qint64 expires = 0;
-    bool combination = false;
-    int repeatCount = 1;
-
-    // Código Linux de la tecla física cuando la entrada representa
-    // una única tecla. Las combinaciones utilizan -1.
-    int linuxKeyCode = -1;
-    bool composePending = false;
-    bool keyboardEntry = false;
-    bool maskKeyboard = false;
-};
-
-
-
-class WaylandPointer
-{
-public:
-    WaylandPointer() = default;
-
-    ~WaylandPointer()
-    {
-        stop();
-    }
-
-    bool start(std::function<void(const QString &, bool)> callback)
-    {
-        if (display)
-            return true;
-
-        onButton = std::move(callback);
-
-        display = wl_display_connect(nullptr);
-        if (!display) {
-            qWarning() << "WaylandPointer: no se pudo conectar a Wayland";
-            return false;
-        }
-
-        registry = wl_display_get_registry(display);
-        if (!registry) {
-            stop();
-            return false;
-        }
-
-        static const wl_registry_listener listener = {
-            registryGlobal,
-            registryGlobalRemove
-        };
-
-        wl_registry_add_listener(registry, &listener, this);
-
-        if (wl_display_roundtrip(display) < 0) {
-            stop();
-            return false;
-        }
-
-        if (!seat) {
-            qWarning() << "WaylandPointer: no se encontró wl_seat";
-            stop();
-            return false;
-        }
-
-        pointer = wl_seat_get_pointer(seat);
-        if (!pointer) {
-            qWarning() << "WaylandPointer: no se pudo obtener wl_pointer";
-            stop();
-            return false;
-        }
-
-        static const wl_pointer_listener pointerListener = {
-            pointerEnter,
-            pointerLeave,
-            pointerMotion,
-            pointerButton,
-            pointerAxis,
-            pointerFrame,
-            pointerAxisSource,
-            pointerAxisStop,
-            pointerAxisDiscrete,
-            pointerAxisValue120,
-            pointerAxisRelativeDirection
-        };
-
-        wl_pointer_add_listener(pointer, &pointerListener, this);
-
-        if (wl_display_roundtrip(display) < 0) {
-            stop();
-            return false;
-        }
-
-        fd = wl_display_get_fd(display);
-        if (fd < 0) {
-            stop();
-            return false;
-        }
-
-        qDebug() << "WaylandPointer: activo";
-        return true;
-    }
-
-    void dispatch()
-    {
-        if (!display)
-            return;
-
-        if (wl_display_dispatch_pending(display) < 0) {
-            stop();
-            return;
-        }
-
-        if (wl_display_flush(display) < 0) {
-            if (errno != EAGAIN)
-                stop();
-        }
-    }
-
-    void stop()
-    {
-        if (pointer) {
-            wl_pointer_destroy(pointer);
-            pointer = nullptr;
-        }
-
-        if (seat) {
-            wl_seat_destroy(seat);
-            seat = nullptr;
-        }
-
-        if (registry) {
-            wl_registry_destroy(registry);
-            registry = nullptr;
-        }
-
-        if (display) {
-            wl_display_disconnect(display);
-            display = nullptr;
-        }
-
-        fd = -1;
-    }
-
-    int socketFd() const
-    {
-        return fd;
-    }
-
-private:
-    static void registryGlobal(
-        void *data,
-        wl_registry *registry,
-        uint32_t name,
-        const char *interface,
-        uint32_t version)
-    {
-        auto *self = static_cast<WaylandPointer *>(data);
-
-        if (std::strcmp(interface, wl_seat_interface.name) == 0) {
-            const uint32_t bindVersion = std::min(
-                version,
-                9u);
-
-            self->seat = static_cast<wl_seat *>(
-                wl_registry_bind(
-                    registry,
-                    name,
-                    &wl_seat_interface,
-                    bindVersion));
-        }
-    }
-
-    static void registryGlobalRemove(
-        void *,
-        wl_registry *,
-        uint32_t)
-    {
-    }
-
-    static void pointerEnter(
-        void *,
-        wl_pointer *,
-        uint32_t,
-        wl_surface *,
-        wl_fixed_t,
-        wl_fixed_t)
-    {
-    }
-
-    static void pointerLeave(
-        void *,
-        wl_pointer *,
-        uint32_t,
-        wl_surface *)
-    {
-    }
-
-    static void pointerMotion(
-        void *,
-        wl_pointer *,
-        uint32_t,
-        wl_fixed_t,
-        wl_fixed_t)
-    {
-    }
-
-    static void pointerButton(
-        void *data,
-        wl_pointer *,
-        uint32_t,
-        uint32_t,
-        uint32_t button,
-        uint32_t state)
-    {
-        auto *self = static_cast<WaylandPointer *>(data);
-
-        if (!self->onButton)
-            return;
-
-        QString name;
-
-        switch (button) {
-        case BTN_LEFT:
-            name = QStringLiteral("BTN_LEFT");
-            break;
-        case BTN_RIGHT:
-            name = QStringLiteral("BTN_RIGHT");
-            break;
-        case BTN_MIDDLE:
-            name = QStringLiteral("BTN_MIDDLE");
-            break;
-        case BTN_SIDE:
-            name = QStringLiteral("BTN_SIDE");
-            break;
-        case BTN_EXTRA:
-            name = QStringLiteral("BTN_EXTRA");
-            break;
-        default:
-            name = QStringLiteral("BTN_%1").arg(button);
-            break;
-        }
-
-        self->onButton(
-            name,
-            state == WL_POINTER_BUTTON_STATE_PRESSED);
-    }
-
-    static void pointerAxis(
-        void *data,
-        wl_pointer *,
-        uint32_t,
-        uint32_t axis,
-        wl_fixed_t value)
-    {
-        auto *self = static_cast<WaylandPointer *>(data);
-
-        if (!self->onButton)
-            return;
-
-        /*
-         * Wayland no expone la rueda como un "button".
-         * Convertimos cada movimiento de rueda en un evento visual.
-         *
-         * El signo sigue la convención estándar de Wayland:
-         * positivo = desplazamiento hacia abajo/derecha según el eje.
-         */
-        if (axis == WL_POINTER_AXIS_VERTICAL_SCROLL) {
-            if (value > 0) {
-                self->onButton(
-                    QStringLiteral("BTN_WHEEL_DOWN"),
-                    true);
-            } else if (value < 0) {
-                self->onButton(
-                    QStringLiteral("BTN_WHEEL_UP"),
-                    true);
-            }
-        } else if (axis == WL_POINTER_AXIS_HORIZONTAL_SCROLL) {
-            if (value > 0) {
-                self->onButton(
-                    QStringLiteral("BTN_WHEEL_RIGHT"),
-                    true);
-            } else if (value < 0) {
-                self->onButton(
-                    QStringLiteral("BTN_WHEEL_LEFT"),
-                    true);
-            }
-        }
-    }
-
-    static void pointerFrame(
-        void *,
-        wl_pointer *)
-    {
-    }
-
-    static void pointerAxisSource(
-        void *,
-        wl_pointer *,
-        uint32_t)
-    {
-    }
-
-    static void pointerAxisStop(
-        void *,
-        wl_pointer *,
-        uint32_t,
-        uint32_t)
-    {
-    }
-
-    static void pointerAxisDiscrete(
-        void *,
-        wl_pointer *,
-        uint32_t,
-        int32_t)
-    {
-    }
-
-    static void pointerAxisValue120(
-        void *,
-        wl_pointer *,
-        uint32_t,
-        int32_t)
-    {
-    }
-
-    static void pointerAxisRelativeDirection(
-        void *,
-        wl_pointer *,
-        uint32_t,
-        uint32_t)
-    {
-    }
-
-    wl_display *display = nullptr;
-    wl_registry *registry = nullptr;
-    wl_seat *seat = nullptr;
-    wl_pointer *pointer = nullptr;
-
-    int fd = -1;
-
-    std::function<void(const QString &, bool)> onButton;
-};
+// ============================================================================
+// 3. TUS ARCHIVOS PROPIOS (Al ir al final, ya "heredan" el conocimiento de Qt)
+// ============================================================================
+#include "src/mouse/WaylandPointer.h"
+#include "src/input/InputEvent.h"
+#include "src/core/VisualEntry.h"
+#include "src/core/Shortcuts.h"
+#include "src/xkb/XkbManager.h"
+#include "src/wayland/WaylandKeyboard.h"
+#include "src/input/ShowMeTheKeyBackend.h"
+#include "src/input/InputReader.h"
+#include "src/settings/Settings.h"
+#include "src/ui/ShortcutHelpDialog.h"
+#include "src/ui/AboutDialog.h"
+#include "src/ui/ContextMenu.h"
 
 class KeyCast : public QWidget
 {
@@ -430,55 +96,27 @@ public:
 
         setWindowTitle(QStringLiteral("KDE KeyCast"));
 
-        QSettings settings(
-            QStringLiteral("KDE"),
-            QStringLiteral("KDEKeyCast")
-        );
 
         compactMode =
-            settings.value(
-                QStringLiteral("compactMode"),
-                false
-            ).toBool();
+            settings.compactMode();
 
         alwaysOnTop =
-            settings.value(
-                QStringLiteral("alwaysOnTop"),
-                true
-            ).toBool();
+            settings.alwaysOnTop();
 
         displayDurationMs =
-            settings.value(
-                QStringLiteral("displayDurationMs"),
-                1800
-            ).toLongLong();
-
-        displayDurationMs =
-            qBound<qint64>(
-                static_cast<qint64>(500),
-                displayDurationMs,
-                static_cast<qint64>(5000)
-            );
+            settings.displayDurationMs();
 
         lightMode =
-            settings.value(
-                QStringLiteral("lightMode"),
-                false
-            ).toBool();
+            settings.lightMode();
 
         updateApplicationIcon();
 
         hideKeys =
-            settings.value(
-                QStringLiteral("hideKeys"),
-                false
-            ).toBool();
+            settings.hideKeys();
 
         onlyShortcuts =
-            settings.value(
-                QStringLiteral("onlyShortcuts"),
-                false
-            ).toBool();
+            settings.onlyShortcuts();
+
 
         QDBusConnection dbus =
             QDBusConnection::sessionBus();
@@ -505,6 +143,96 @@ public:
         setFixedSize(
             initialWidth,
             106
+        );
+
+
+        waylandKeyboard.setKeymapCallback(
+            [this](uint32_t format, int fd, uint32_t size) {
+                if (format != WL_KEYBOARD_KEYMAP_FORMAT_XKB_V1) {
+                    qWarning(
+                        "KDE KeyCast: formato de keymap Wayland no soportado"
+                    );
+
+                    ::close(fd);
+                    return;
+                }
+
+                if (size == 0) {
+                    qWarning(
+                        "KDE KeyCast: keymap Wayland vacío"
+                    );
+
+                    ::close(fd);
+                    return;
+                }
+
+                void *mapping =
+                    mmap(
+                        nullptr,
+                        size,
+                        PROT_READ,
+                        MAP_PRIVATE,
+                        fd,
+                        0
+                    );
+
+                if (mapping == MAP_FAILED) {
+                    qWarning(
+                        "KDE KeyCast: mmap del keymap falló: %s",
+                        std::strerror(errno)
+                    );
+
+                    ::close(fd);
+                    return;
+                }
+
+                if (!xkb.loadKeymap(
+                        static_cast<const char *>(mapping))) {
+
+                    munmap(mapping, size);
+                    ::close(fd);
+
+                    qWarning()
+                        << "KDE KeyCast: no se pudo cargar el keymap XKB de Wayland";
+
+                    return;
+                }
+
+                munmap(mapping, size);
+                ::close(fd);
+
+                /*
+                 * Al cambiar el keymap debemos borrar nuestro estado físico
+                 * anterior. El siguiente evento volverá a construirlo.
+                 */
+                pressedModifiers.clear();
+                combinationActive = false;
+                currentCombination.clear();
+
+                qDebug()
+                    << "KDE KeyCast: XKB keymap actualizado desde Wayland";
+            }
+        );
+
+        waylandKeyboard.setModifiersCallback(
+            [this](
+                uint32_t modsDepressed,
+                uint32_t modsLatched,
+                uint32_t modsLocked,
+                uint32_t group
+            ) {
+                if (!xkb.isReady())
+                    return;
+
+                xkb.updateModifiers(
+                    modsDepressed,
+                    modsLatched,
+                    modsLocked,
+                    group
+                );
+
+                update();
+            }
         );
 
         setupWaylandKeyboard();
@@ -543,12 +271,52 @@ public:
             }
         }
 
+
+
+        inputReader.setEventHandler(
+            [this](const KDEKeyCast::InputEvent &event) {
+
+                if (event.isKeyboard()) {
+                    handleKeyboardInputEvent(event);
+                    return;
+                }
+
+                if (event.isMouse()) {
+
+                    if (event.isWheel()) {
+
+                        addMouseWheel(
+                            event.keyName,
+                            event.wheelDelta
+                        );
+
+                        return;
+                    }
+
+                    if (event.action ==
+                        KDEKeyCast::InputAction::Pressed) {
+
+                        if (!event.keyName.isEmpty())
+                            addMouseButton(event.keyName);
+                    }
+                }
+            }
+        );
+
         connect(
             &process,
             &QProcess::readyReadStandardOutput,
             this,
-            &KeyCast::readInput
+            [this] {
+                while (process.canReadLine()) {
+
+                    inputReader.processLine(
+                        process.readLine()
+                    );
+                }
+            }
         );
+
 
         connect(
             &process,
@@ -625,63 +393,57 @@ public:
                 }
             }
 
-        QSettings settings(
-            QStringLiteral("KDE"),
-            QStringLiteral("KDEKeyCast")
-        );
 
-        settings.setValue(
-            QStringLiteral("compactMode"),
+        settings.setCompactMode(
             compactMode
         );
 
-        settings.setValue(
-            QStringLiteral("alwaysOnTop"),
+        settings.setAlwaysOnTop(
             alwaysOnTop
         );
 
-        settings.setValue(
-            QStringLiteral("displayDurationMs"),
+        settings.setDisplayDurationMs(
             displayDurationMs
         );
 
-        settings.setValue(
-            QStringLiteral("lightMode"),
+        settings.setLightMode(
             lightMode
         );
 
-        settings.setValue(
-            QStringLiteral("hideKeys"),
+        settings.setHideKeys(
             hideKeys
         );
 
-        settings.setValue(
-            QStringLiteral("onlyShortcuts"),
+        settings.setOnlyShortcuts(
             onlyShortcuts
         );
 
-        if (waylandNotifier)
+
+        if (waylandNotifier) {
             delete waylandNotifier;
+            waylandNotifier = nullptr;
+        }
 
-        if (keyboard)
-            wl_keyboard_destroy(keyboard);
+        waylandKeyboard.stop();
 
-        if (seat)
+        if (seat) {
             wl_seat_destroy(seat);
+            seat = nullptr;
+        }
 
-        if (registry)
+        if (registry) {
             wl_registry_destroy(registry);
+            registry = nullptr;
+        }
 
-        if (display)
+        if (display) {
             wl_display_disconnect(display);
+            display = nullptr;
+        }
+
 
         resetComposeState();
 
-        if (xkbState)
-            xkb_state_unref(xkbState);
-
-        if (xkbKeymap)
-            xkb_keymap_unref(xkbKeymap);
     }
     public slots:
 
@@ -699,15 +461,11 @@ public:
 
             alwaysOnTop = state;
 
-            QSettings settings(
-                QStringLiteral("KDE"),
-                QStringLiteral("KDEKeyCast")
-            );
 
-            settings.setValue(
-                QStringLiteral("alwaysOnTop"),
+            settings.setAlwaysOnTop(
                 alwaysOnTop
             );
+
 
             qDebug()
                 << "KDE KeyCast: keepAbove ="
@@ -953,7 +711,8 @@ protected:
              * Las teclas especiales solo muestran serigrafía
              * adicional en modo normal.
              */
-            if (visualKeys.size() == 1 &&
+            if (!compactMode &&
+                visualKeys.size() == 1 &&
                 entry.linuxKeyCode >= 0) {
 
                 secondary =
@@ -1876,25 +1635,16 @@ protected:
             items.append(StatusIcon::OnlyShortcuts);
 
         const bool capsLock =
-            xkbState &&
-            xkb_state_led_name_is_active(
-                xkbState,
-                XKB_LED_NAME_CAPS
-            ) > 0;
+            xkb.isReady() &&
+            xkb.ledActive("Caps Lock");
 
         const bool numLock =
-            xkbState &&
-            xkb_state_led_name_is_active(
-                xkbState,
-                XKB_LED_NAME_NUM
-            ) > 0;
+            xkb.isReady() &&
+            xkb.ledActive("Num Lock");
 
         const bool scrollLock =
-            xkbState &&
-            xkb_state_led_name_is_active(
-                xkbState,
-                XKB_LED_NAME_SCROLL
-            ) > 0;
+            xkb.isReady() &&
+            xkb.ledActive("Scroll Lock");
 
         if (capsLock)
             items.append(StatusIcon::CapsLock);
@@ -3961,226 +3711,29 @@ private:
 
     static const wl_registry_listener registryListener;
 
-    static void keyboardKeymap(
-        void *data,
-        wl_keyboard *,
-        uint32_t format,
-        int fd,
-        uint32_t size
-    )
-    {
-        KeyCast *self =
-            static_cast<KeyCast *>(data);
-
-        if (format != WL_KEYBOARD_KEYMAP_FORMAT_XKB_V1) {
-
-            qWarning(
-                "KDE KeyCast: formato de keymap Wayland no soportado"
-            );
-
-            ::close(fd);
-            return;
-        }
-
-        if (size == 0) {
-
-            qWarning(
-                "KDE KeyCast: keymap Wayland vacío"
-            );
-
-            ::close(fd);
-            return;
-        }
-
-        void *mapping =
-            mmap(
-                nullptr,
-                size,
-                PROT_READ,
-                MAP_PRIVATE,
-                fd,
-                0
-            );
-
-        if (mapping == MAP_FAILED) {
-
-            qWarning(
-                "KDE KeyCast: mmap del keymap falló: %s",
-                std::strerror(errno)
-            );
-
-            ::close(fd);
-            return;
-        }
-
-        xkb_context *context =
-            xkb_context_new(
-                XKB_CONTEXT_NO_FLAGS
-            );
-
-        if (!context) {
-
-            munmap(mapping, size);
-            ::close(fd);
-
-            qWarning(
-                "KDE KeyCast: no se pudo crear xkb_context"
-            );
-
-            return;
-        }
-
-        /*
-         * Wayland entrega un keymap XKB v1 como texto terminado en NUL.
-         */
-        xkb_keymap *newKeymap =
-            xkb_keymap_new_from_string(
-                context,
-                static_cast<const char *>(mapping),
-                XKB_KEYMAP_FORMAT_TEXT_V1,
-                XKB_KEYMAP_COMPILE_NO_FLAGS
-            );
-
-        munmap(mapping, size);
-        ::close(fd);
-
-        if (!newKeymap) {
-
-            xkb_context_unref(context);
-
-            qWarning(
-                "KDE KeyCast: no se pudo compilar el keymap XKB de Wayland"
-            );
-
-            return;
-        }
-
-        xkb_state *newState =
-            xkb_state_new(newKeymap);
-
-        if (!newState) {
-
-            xkb_keymap_unref(newKeymap);
-            xkb_context_unref(context);
-
-            qWarning(
-                "KDE KeyCast: no se pudo crear xkb_state"
-            );
-
-            return;
-        }
-
-        if (self->xkbState)
-            xkb_state_unref(self->xkbState);
-
-        if (self->xkbKeymap)
-            xkb_keymap_unref(self->xkbKeymap);
-
-        self->xkbKeymap =
-            newKeymap;
-
-        self->xkbState =
-            newState;
-
-        self->resetComposeState();
-
-        QByteArray locale =
-            qEnvironmentVariable("LC_ALL").toLocal8Bit();
-
-        if (locale.isEmpty())
-            locale =
-                qEnvironmentVariable("LC_CTYPE").toLocal8Bit();
-
-        if (locale.isEmpty())
-            locale =
-                qEnvironmentVariable("LANG").toLocal8Bit();
-
-        if (locale.isEmpty())
-            locale =
-                QByteArrayLiteral("C");
-
-        self->xkbComposeTable =
-            xkb_compose_table_new_from_locale(
-                context,
-                locale.constData(),
-                XKB_COMPOSE_COMPILE_NO_FLAGS
-            );
-
-        if (!self->xkbComposeTable) {
-
-            qWarning()
-                << "KDE KeyCast: no se pudo crear la tabla Compose para"
-                << locale;
-
-        } else {
-
-            self->xkbComposeState =
-                xkb_compose_state_new(
-                    self->xkbComposeTable,
-                    XKB_COMPOSE_STATE_NO_FLAGS
-                );
-
-            if (!self->xkbComposeState) {
-
-                xkb_compose_table_unref(
-                    self->xkbComposeTable
-                );
-
-                self->xkbComposeTable = nullptr;
-
-                qWarning()
-                    << "KDE KeyCast: no se pudo crear el estado Compose";
-            }
-        }
-
-        xkb_context_unref(context);
-
-        /*
-         * Al cambiar el keymap debemos borrar nuestro estado físico
-         * anterior. El siguiente evento volverá a construirlo.
-         */
-        self->pressedModifiers.clear();
-        self->combinationActive = false;
-        self->currentCombination.clear();
-
-        qDebug()
-            << "KDE KeyCast: XKB keymap actualizado desde Wayland";
-    }
-
     bool handleComposeKey(
         int linuxKeyCode,
         const QString &visualName
     )
     {
-        if (!xkbComposeState ||
+        if (!xkb.composeState() ||
             visualName.isEmpty()) {
 
             return false;
         }
 
-        if (!xkbState)
-            return false;
-
-        const xkb_keycode_t keycode =
-            xkbKeycodeFromLinuxCode(
-                linuxKeyCode
-            );
-
-        if (keycode == XKB_KEYCODE_INVALID)
+        if (!xkb.isReady())
             return false;
 
         const xkb_keysym_t keysym =
-            xkb_state_key_get_one_sym(
-                xkbState,
-                keycode
-            );
+            xkb.keySym(linuxKeyCode);
 
         if (keysym == XKB_KEY_NoSymbol)
             return false;
 
         const xkb_compose_feed_result result =
             xkb_compose_state_feed(
-                xkbComposeState,
+                xkb.composeState(),
                 keysym
             );
 
@@ -4192,7 +3745,7 @@ private:
 
         const xkb_compose_status status =
             xkb_compose_state_get_status(
-                xkbComposeState
+                xkb.composeState()
             );
 
         /*
@@ -4394,90 +3947,6 @@ private:
         return false;
     }
 
-    static void keyboardEnter(
-        void *,
-        wl_keyboard *,
-        uint32_t,
-        wl_surface *,
-        wl_array *
-    )
-    {
-    }
-
-    static void keyboardLeave(
-        void *,
-        wl_keyboard *,
-        uint32_t,
-        wl_surface *
-    )
-    {
-    }
-
-    static void keyboardKey(
-        void *,
-        wl_keyboard *,
-        uint32_t,
-        uint32_t,
-        uint32_t,
-        uint32_t
-    )
-    {
-        /*
-         * NO usamos los key events de Wayland para el overlay.
-         *
-         * showmethekey-cli nos proporciona los eventos físicos.
-         *
-         * Wayland sólo se utiliza aquí como fuente del keymap y del
-         * estado de modificadores/layout.
-         */
-    }
-
-    static void keyboardModifiers(
-        void *data,
-        wl_keyboard *,
-        uint32_t,
-        uint32_t modsDepressed,
-        uint32_t modsLatched,
-        uint32_t modsLocked,
-        uint32_t group
-    )
-    {
-        KeyCast *self =
-            static_cast<KeyCast *>(data);
-
-        if (!self->xkbState)
-            return;
-
-        /*
-         * Este callback es importante para cambios de layout y para
-         * sincronizar Caps Lock / Shift / AltGr / Ctrl cuando KWin
-         * informa del estado lógico del teclado.
-         */
-        xkb_state_update_mask(
-            self->xkbState,
-            modsDepressed,
-            modsLatched,
-            modsLocked,
-            group,
-            group,
-            group
-        );
-
-        self->update();
-    }
-
-    static void keyboardRepeatInfo(
-        void *,
-        wl_keyboard *,
-        int32_t,
-        int32_t
-    )
-    {
-    }
-
-    static const wl_keyboard_listener keyboardListener;
-
-
     void handleWaylandPointerEvent(
         const KDEKeyCast::InputEvent &event)
     {
@@ -4574,12 +4043,9 @@ private:
         /*
          * Obtenemos el teclado del seat.
          */
-        keyboard =
-            wl_seat_get_keyboard(seat);
-
-        if (!keyboard) {
+        if (!waylandKeyboard.start(seat)) {
             qWarning()
-                << "Failed to obtain Wayland keyboard";
+                << "KDE KeyCast: no se pudo obtener wl_keyboard";
             return;
         }
 
@@ -4591,21 +4057,6 @@ private:
             qWarning()
                 << "Failed to initialise Wayland pointer";
         }
-
-        if (!keyboard) {
-
-            qWarning(
-                "KDE KeyCast: no se pudo obtener wl_keyboard"
-            );
-
-            return;
-        }
-
-        wl_keyboard_add_listener(
-            keyboard,
-            &keyboardListener,
-            this
-        );
 
         /*
          * Segundo roundtrip:
@@ -4669,325 +4120,34 @@ private:
      * ---------------------------------------------------------------
      */
 
+
     QStringList xkbSecondaryLegends(
         int linuxCode,
         const QString &primary
     ) const
     {
-        QStringList result;
-
-        /*
-         * En modo compacto las teclas especiales ya utilizan
-         * su símbolo como leyenda principal.
-         *
-         * No debemos intentar obtener niveles XKB adicionales
-         * para ellas porque teclas como Pause pueden devolver
-         * nombres internos como Pause / Break / Sys_Req.
-         */
-        if (compactMode &&
-            (primary == QStringLiteral("Ⅱ") ||
-             primary == QStringLiteral("⎙") ||
-             primary == QStringLiteral("⇥"))) {
-
-            return result;
-        }
-
-        if (!xkbState ||
-            !xkbKeymap ||
-            linuxCode < 0) {
-
-            return result;
-        }
-
-        const xkb_keycode_t code =
-            xkbKeycodeFromLinuxCode(linuxCode);
-
-        if (code == XKB_KEYCODE_INVALID)
-            return result;
-
-        /*
-         * -----------------------------------------------------------
-         * Teclas especiales con serigrafía física fija
-         * -----------------------------------------------------------
-         *
-         * Print y Pause tienen varias entradas XKB asociadas
-         * dependiendo del layout/implementación. Para el overlay
-         * queremos representar únicamente la serigrafía física de
-         * la tecla, no nombres internos como Sys_Req, Break, etc.
-         */
-        /*
-         * Estas teclas tienen símbolos físicos conocidos.
-         *
-         * En modo compacto el símbolo ya es la leyenda principal,
-         * por lo que NO debemos devolverlo también como leyenda
-         * secundaria.
-         *
-         * En modo normal sí se conserva como serigrafía.
-         */
-        if (primary == QStringLiteral("PrtSc") ||
-            primary == QStringLiteral("Print")) {
-
-            if (!compactMode)
-                result.append(QStringLiteral("⎙"));
-
-            return result;
-        }
-
-        if (primary == QStringLiteral("Pause")) {
-
-            if (!compactMode)
-                result.append(QStringLiteral("Ⅱ"));
-
-            return result;
-        }
-
-        /*
-         * Tab puede tener keysyms auxiliares ISO_* en algunos keymaps.
-         * No son serigrafía física de la tecla.
-         */
-        if (primary == QStringLiteral("Tab")) {
-
-            if (!compactMode)
-                result.append(QStringLiteral("⇥"));
-
-            return result;
-        }
-
-        /*
-         * Determinamos el layout actualmente activo.
-         */
-        const xkb_layout_index_t layout =
-            xkb_state_key_get_layout(
-                xkbState,
-                code
-            );
-
-        if (layout == XKB_LAYOUT_INVALID)
-            return result;
-
-        const xkb_level_index_t levels =
-            xkb_keymap_num_levels_for_key(
-                xkbKeymap,
-                code,
-                layout
-            );
-
-        /*
-         * No mostramos una cantidad absurda de leyendas.
-         * Un teclado convencional normalmente tiene 2-4 niveles.
-         */
-        const xkb_level_index_t maxLevels =
-            qMin<xkb_level_index_t>(
-                levels,
-                4
-            );
-
-        for (xkb_level_index_t level = 0;
-             level < maxLevels;
-             ++level) {
-
-            const xkb_keysym_t *syms = nullptr;
-
-            const int count =
-                xkb_keymap_key_get_syms_by_level(
-                    xkbKeymap,
-                    code,
-                    layout,
-                    level,
-                    &syms
-                );
-
-            if (count <= 0 || !syms)
-                continue;
-
-            for (int i = 0; i < count; ++i) {
-
-                /*
-                 * Las dead keys son estados de composición,
-                 * no leyendas físicas de la keycap.
-                 */
-                char symName[128] = {};
-
-                xkb_keysym_get_name(
-                    syms[i],
-                    symName,
-                    sizeof(symName)
-                );
-
-                if (QString::fromLatin1(symName)
-                        .startsWith(QStringLiteral("dead_"))) {
-                    continue;
-                }
-
-                const QString text =
-                    keysymToText(syms[i]);
-
-                if (text.isEmpty())
-                    continue;
-
-                /*
-                 * Evitamos duplicar el carácter principal.
-                 */
-                if (text == primary)
-                    continue;
-
-                if (result.contains(text))
-                    continue;
-
-                result.append(text);
-            }
-        }
-
-        /*
-         * Las teclas especiales solo llevan serigrafía adicional
-         * en modo normal.
-         *
-         * Los caracteres normales sí conservan sus leyendas en
-         * compacto.
-         */
-        bool characterKey = false;
-
-        const bool compactSpecialKey =
-            compactMode &&
-            (primary == QStringLiteral("␣") ||
-             primary == QStringLiteral("↵") ||
-             primary == QStringLiteral("⌫") ||
-             primary == QStringLiteral("⌦") ||
-             primary == QStringLiteral("⇥") ||
-             primary == QStringLiteral("⇪") ||
-             primary == QStringLiteral("⇧") ||
-             primary == QStringLiteral("⌃") ||
-             primary == QStringLiteral("⌥") ||
-             primary == QStringLiteral("⎇") ||
-             primary == QStringLiteral("⇱") ||
-             primary == QStringLiteral("⇲") ||
-             primary == QStringLiteral("⇞") ||
-             primary == QStringLiteral("⇟") ||
-             primary == QStringLiteral("⌘"));
-
-        if (!compactSpecialKey &&
-            primary.size() == 1) {
-
-            const QChar ch =
-                primary.at(0);
-
-            characterKey =
-                ch.isLetterOrNumber() ||
-                ch.isPunct() ||
-                ch.isSymbol();
-        }
-
-        if (!characterKey && compactMode)
-            result.clear();
-
-        /*
-         * -----------------------------------------------------------
-         * Serigrafía de teclas especiales
-         * -----------------------------------------------------------
-         *
-         * En modo normal:
-         *
-         *     Space       <- principal
-         *          ␣      <- serigrafía
-         *
-         * En compacto:
-         *
-         *     ␣           <- principal
-         *
-         * De esta forma ambos modos tienen una identidad visual
-         * claramente diferenciada.
-         */
-
-        if (!characterKey && !compactMode) {
-
-            const QString symbol =
-                compactDisplayName(primary);
-
-            if (symbol != primary) {
-
-                const QStringList symbolicKeys = {
-                    QStringLiteral("⌃"),
-                    QStringLiteral("⌥"),
-                    QStringLiteral("⎇"),
-                    QStringLiteral("⇧"),
-                    QStringLiteral("⌘"),
-                    QStringLiteral("↵"),
-                    QStringLiteral("⌫"),
-                    QStringLiteral("⇥"),
-                    QStringLiteral("␣"),
-                    QStringLiteral("⇪"),
-                    QStringLiteral("⌦")
-                };
-
-                if (symbolicKeys.contains(symbol))
-                    result.prepend(symbol);
-            }
-        }
-
-        /*
-         * La serigrafía física debe ser discreta.
-         *
-         * Como máximo mostramos dos leyendas secundarias.
-         */
-        while (result.size() > 2)
-            result.removeLast();
-
-        return result;
-    }
-
-    void updateXkbState(
-        int linuxCode,
-        bool pressed
-    )
-    {
-        if (!xkbState)
-            return;
-
-        const xkb_keycode_t code =
-            xkbKeycodeFromLinuxCode(
-                linuxCode
-            );
-
-        if (code == XKB_KEYCODE_INVALID)
-            return;
-
-        xkb_state_update_key(
-            xkbState,
-            code,
-            pressed
-                ? XKB_KEY_DOWN
-                : XKB_KEY_UP
+        return xkb.secondaryLegends(
+            linuxCode,
+            primary,
+            compactMode
         );
+    }
+    void updateXkbState(int linuxCode, bool pressed)
+    {
+        xkb.updateKey(linuxCode, pressed);
     }
 
     void resetComposeState()
     {
-        if (xkbComposeState) {
-
-            xkb_compose_state_unref(
-                xkbComposeState
-            );
-
-            xkbComposeState = nullptr;
-        }
-
-        if (xkbComposeTable) {
-
-            xkb_compose_table_unref(
-                xkbComposeTable
-            );
-
-            xkbComposeTable = nullptr;
-        }
-
-        composeSequence.clear();
+        xkb.resetComposeState();
+        composeKeyLegends.clear();
     }
 
     void resetComposeSequence()
     {
-        if (xkbComposeState)
+        if (xkb.composeState())
             xkb_compose_state_reset(
-                xkbComposeState
+                xkb.composeState()
             );
 
         composeSequence.clear();
@@ -5012,47 +4172,16 @@ private:
         const QString &fallbackName
     )
     {
-        if (!xkbState ||
-            !xkbKeymap ||
-            linuxCode < 0) {
-
+        if (!xkb.isReady() || linuxCode < 0)
             return displayName(fallbackName);
-        }
-
-        const xkb_keycode_t code =
-            xkbKeycodeFromLinuxCode(
-                linuxCode
-            );
-
-        if (code == XKB_KEYCODE_INVALID)
-            return displayName(fallbackName);
-
-        /*
-         * IMPORTANTE:
-         *
-         * xkb_state_key_get_one_sym() obtiene el keysym lógico
-         * teniendo en cuenta el estado ACTUAL:
-         *
-         *   Shift
-         *   Caps Lock
-         *   AltGr
-         *   layout
-         *   etc.
-         *
-         * No usamos xkb_state_key_get_utf8() aquí porque Control puede
-         * transformar C en U+0003.
-         */
-        const xkb_keysym_t sym =
-            xkb_state_key_get_one_sym(
-                xkbState,
-                code
-            );
 
         const QString result =
-            keysymToText(sym);
+            xkb.displayName(linuxCode, fallbackName);
 
-        if (!result.isEmpty())
+        if (!result.isEmpty() &&
+            result != fallbackName) {
             return result;
+        }
 
         return displayName(fallbackName);
     }
@@ -5591,771 +4720,628 @@ void addKeyboardVisualEntry(
      * ---------------------------------------------------------------
      */
 
-    void readInput()
+
+    void handleKeyboardInputEvent(
+        const KDEKeyCast::InputEvent &event)
     {
-        while (process.canReadLine()) {
+        const QString &keyName =
+            event.keyName;
 
-            const QByteArray line =
-                process.readLine().trimmed();
+        const int linuxKeyCode =
+            event.linuxCode;
 
-            if (line.isEmpty())
-                continue;
+        const bool pressed =
+            event.action ==
+            KDEKeyCast::InputAction::Pressed;
 
-            QJsonParseError error;
+        const bool released =
+            event.action ==
+            KDEKeyCast::InputAction::Released;
 
-            const QJsonDocument doc =
-                QJsonDocument::fromJson(
-                    line,
-                    &error
-                );
+        if (!pressed && !released)
+            return;
 
-            if (error.error !=
-                    QJsonParseError::NoError ||
-                !doc.isObject()) {
-
-                continue;
-            }
-
-            const QJsonObject obj =
-                doc.object();
-
-            const QString eventName =
-                obj.value(
-                    QStringLiteral("event_name")
-                ).toString();
-
-            const QString keyName =
-                obj.value(
-                    QStringLiteral("key_name")
-                ).toString();
-
-            const int linuxKeyCode =
-                obj.value(
-                    QStringLiteral("key_code")
-                ).toInt(-1);
-
-            const QString state =
-                obj.value(
-                    QStringLiteral("state_name")
-                ).toString();
-
-            /*
-             * -------------------------------------------------------
-             * MOUSE WHEEL
-             * -------------------------------------------------------
-             *
-             * POINTER_AXIS no tiene key_name ni key_code.
-             * Por eso debe procesarse antes de los filtros
-             * específicos del teclado/botones.
-             */
-
-            if (eventName ==
-                QStringLiteral("POINTER_AXIS")) {
-
-                    const QString axisName =
-                        obj.value(
-                            QStringLiteral("axis_name")
-                        ).toString();
-
-                    const double axisValue =
-                        obj.value(
-                            QStringLiteral("axis_value")
-                        ).toDouble();
-
-                    addMouseWheel(
-                        axisName,
-                        axisValue
-                    );
-
-                continue;
-            }
-
-            if (keyName.isEmpty())
-                continue;
-
-            if (linuxKeyCode < 0)
-                continue;
-
-            /*
-             * -------------------------------------------------------
-             * MOUSE
-             * -------------------------------------------------------
-             */
-
-            if (eventName ==
-                QStringLiteral("POINTER_BUTTON")) {
-
-                if (state ==
-                    QStringLiteral("PRESSED")) {
-
-                    addMouseButton(keyName);
-                }
-
-                continue;
-            }
-
-            /*
-             * -------------------------------------------------------
-             * KEYBOARD
-             * -------------------------------------------------------
-             */
-
-            if (eventName !=
-                QStringLiteral("KEYBOARD_KEY")) {
-
-                continue;
-            }
-
-            const bool pressed =
-                state ==
-                QStringLiteral("PRESSED");
-
-            const bool released =
-                state ==
-                QStringLiteral("RELEASED");
-
-            if (!pressed && !released)
-                continue;
-
-            const bool modifier =
-                isModifier(keyName);
-
-            if (pressed &&
-                    keyName == QStringLiteral("KEY_M") &&
-                    pressedModifiers.contains(
-                        QStringLiteral("KEY_LEFTCTRL")
-                    ) &&
-                    pressedModifiers.contains(
-                        QStringLiteral("KEY_LEFTSHIFT")
-                    )) {
-
-                    toggleCompactMode();
-
-                }
-
-            if (pressed &&
-                keyName == QStringLiteral("KEY_H") &&
-                pressedModifiers.contains(
-                    QStringLiteral("KEY_LEFTCTRL")
-                ) &&
-                pressedModifiers.contains(
-                    QStringLiteral("KEY_LEFTSHIFT")
-                )) {
-
-                toggleHideKeys();
-            }
-
-            if (pressed &&
-                keyName == QStringLiteral("KEY_P") &&
-                pressedModifiers.contains(QStringLiteral("KEY_LEFTCTRL")) &&
-                pressedModifiers.contains(QStringLiteral("KEY_LEFTSHIFT"))) {
-
-                togglePauseInput();
-                continue;
-            }
-
-            if (pressed &&
-                keyName == QStringLiteral("KEY_C") &&
-                pressedModifiers.contains(
-                    QStringLiteral("KEY_LEFTCTRL")
-                ) &&
-                pressedModifiers.contains(
-                    QStringLiteral("KEY_LEFTSHIFT")
-                )) {
-
-                toggleClickThrough();
-                continue;
-            }
-
-            const bool shift =
-                  keyName ==
-                      QStringLiteral("KEY_LEFTSHIFT") ||
-                  keyName ==
-                      QStringLiteral("KEY_RIGHTSHIFT");
-
-              const bool shiftActive =
-                  pressedModifiers.contains(
-                      QStringLiteral("KEY_LEFTSHIFT")
-                  ) ||
-                  pressedModifiers.contains(
-                      QStringLiteral("KEY_RIGHTSHIFT")
-                  );
-
-            /*
- * -------------------------------------------------------
- * PRESS
- * -------------------------------------------------------
- */
-
-if (pressed) {
-
-    /*
-     * Primero actualizamos XKB.
-     *
-     * Esto hace que la tecla normal se resuelva teniendo en cuenta:
-     *
-     *     Shift
-     *     Caps Lock
-     *     AltGr
-     *     layout
-     *     etc.
-     */
-    updateXkbState(
-        linuxKeyCode,
-        true
-    );
-
-    /*
-     * -----------------------------------------------------------
-     * MODIFICADOR
-     * -----------------------------------------------------------
-     */
-
-    if (modifier) {
-
-        pressedModifiers.insert(
-            keyName
-        );
+        const bool modifier =
+            isModifier(keyName);
 
         /*
-         * Shift por sí solo no genera tarjeta.
-         *
-         * Esperamos a la siguiente tecla para decidir si es:
-         *
-         *     Shift + C       -> C
-         *
-         * o:
-         *
-         *     Shift + ↑       -> ⇧ + ↑
+         * -----------------------------------------------------------
+         * ATAJOS DE CONFIGURACIÓN
+         * -----------------------------------------------------------
          */
-        if (shift &&
-            !hasNonShiftModifier()) {
 
-            update();
-            continue;
-        }
-
-        /*
-         * Ctrl / Alt / AltGr / Meta empiezan una combinación.
-         *
-         * Si Shift se pulsa después de ellos, también entra aquí
-         * porque hasNonShiftModifier() sigue siendo true.
-         */
-        if (hasNonShiftModifier()) {
-
-            startCombinationIfNeeded();
-
-            currentCombination =
-                currentModifierNames();
-
-            update();
-            continue;
-        }
-    }
-
-    /*
-     * -----------------------------------------------------------
-     * TECLA NORMAL
-     * -----------------------------------------------------------
-     */
-
-    const QString name =
-        xkbDisplayName(
-            linuxKeyCode,
-            keyName
-        );
-
-    QString visualName =
-        name.isEmpty()
-            ? displayName(keyName)
-            : name;
-
-    /*
-     * -----------------------------------------------------------
-     * XKB COMPOSE / DEAD KEYS
-     * -----------------------------------------------------------
-     */
-
-    if (!modifier &&
-        !hasNonShiftModifier()) {
-
-        if (handleComposeKey(
-                linuxKeyCode,
-                visualName
+        if (pressed &&
+            keyName == QStringLiteral("KEY_M") &&
+            pressedModifiers.contains(
+                QStringLiteral("KEY_LEFTCTRL")
+            ) &&
+            pressedModifiers.contains(
+                QStringLiteral("KEY_LEFTSHIFT")
             )) {
 
-            continue;
+            toggleCompactMode();
         }
-    }
-    /*
-     * -----------------------------------------------------------
-     * SHIFT + TEXTO
-     * -----------------------------------------------------------
-     *
-     * XKB ya nos entrega el carácter transformado:
-     *
-     *     Shift + a -> A
-     *     Shift + 1 -> !
-     *     Shift + ñ -> Ñ
-     *
-     * Por tanto mostramos únicamente el carácter resultante.
-     */
-    if (shift &&
-        !hasNonShiftModifier() &&
-        isShiftOnlyTextKey(visualName)) {
 
-        addKeyboardVisualEntry(
-            QStringList{
-                visualName
-            },
-            false
-        );
+        if (pressed &&
+            keyName == QStringLiteral("KEY_H") &&
+            pressedModifiers.contains(
+                QStringLiteral("KEY_LEFTCTRL")
+            ) &&
+            pressedModifiers.contains(
+                QStringLiteral("KEY_LEFTSHIFT")
+            )) {
 
-        continue;
-    }
+            toggleHideKeys();
+        }
 
-    /*
-     * -----------------------------------------------------------
-     * SHIFT + TECLA ESPECIAL
-     * -----------------------------------------------------------
-     *
-     * Ejemplos:
-     *
-     *     Shift + ↑
-     *     Shift + ↓
-     *     Shift + Home
-     *     Shift + End
-     *     Shift + F1
-     *
-     * Estas sí deben aparecer como combinación.
-     */
-      if (shiftActive &&
-          !isShiftOnlyTextKey(visualName)) {
+        if (pressed &&
+            keyName == QStringLiteral("KEY_P") &&
+            pressedModifiers.contains(
+                QStringLiteral("KEY_LEFTCTRL")
+            ) &&
+            pressedModifiers.contains(
+                QStringLiteral("KEY_LEFTSHIFT")
+            ) &&
+            pressedModifiers.contains(
+                QStringLiteral("KEY_LEFTALT")
+            )) {
 
-          startCombinationIfNeeded();
+            togglePauseInput();
+        }
 
-          currentCombination =
-              currentModifierNames();
+        if (pressed &&
+            keyName == QStringLiteral("KEY_C") &&
+            pressedModifiers.contains(
+                QStringLiteral("KEY_LEFTCTRL")
+            ) &&
+            pressedModifiers.contains(
+                QStringLiteral("KEY_LEFTSHIFT")
+            ) &&
+            pressedModifiers.contains(
+                QStringLiteral("KEY_LEFTALT")
+            )) {
 
-          /*
-           * Si Shift es el único modificador,
-           * currentModifierNames() puede no conservarlo
-           * en este punto porque el estado físico ya ha
-           * cambiado. Lo añadimos explícitamente.
-           */
-          if (!hasNonShiftModifier() &&
-              !currentCombination.contains(
-                  QStringLiteral("Shift"))) {
+            toggleClickThrough();
+        }
 
-              currentCombination.prepend(
-                  QStringLiteral("Shift")
-              );
-          }
+        const bool shift =
+            keyName ==
+                QStringLiteral("KEY_LEFTSHIFT") ||
+            keyName ==
+                QStringLiteral("KEY_RIGHTSHIFT");
 
-          currentCombinationKey =
-              visualName;
-
-          if (!currentCombinationKey.isEmpty() &&
-              !currentCombination.contains(
-                  currentCombinationKey)) {
-
-              currentCombination.append(
-                  currentCombinationKey
-              );
-          }
-
-          update();
-          continue;
-      }
-
-    /*
-     * -----------------------------------------------------------
-     * CTRL / ALT / ALTGR / META + TECLA
-     * -----------------------------------------------------------
-     */
-
-    if (hasNonShiftModifier()) {
-
-        startCombinationIfNeeded();
-
-        currentCombinationKey =
-            visualName;
-
-        currentCombination =
-            currentModifierNames();
-
-        if (!currentCombinationKey.isEmpty() &&
-            !currentCombination.contains(
-                currentCombinationKey)) {
-
-            currentCombination.append(
-                currentCombinationKey
+        const bool shiftActive =
+            pressedModifiers.contains(
+                QStringLiteral("KEY_LEFTSHIFT")
+            ) ||
+            pressedModifiers.contains(
+                QStringLiteral("KEY_RIGHTSHIFT")
             );
-        }
-
-        update();
-        continue;
-    }
-
-    /*
-     * -----------------------------------------------------------
-     * TECLAS CON ESTADO REAL
-     * -----------------------------------------------------------
-     *
-     * La tarjeta se crea con el estado actual. El timer de
-     * updateMediaState() la seguirá sincronizando mientras esté
-     * visible.
-     */
-
-    if (linuxKeyCode == 113 ||
-        linuxKeyCode == 114 ||
-        linuxKeyCode == 115) {
-
-        updateMediaState();
-
-        addVisualEntry(
-            QStringList{
-                realAudioMuted
-                    ? QStringLiteral("🔇 %1%")
-                          .arg(realAudioVolumePercent)
-                    : QStringLiteral("🔊 %1%")
-                          .arg(realAudioVolumePercent)
-            },
-            false,
-            linuxKeyCode
-        );
-
-        continue;
-    }
-
-    if (linuxKeyCode == 248) {
-
-        updateMediaState();
-
-        addVisualEntry(
-            QStringList{
-                realMicMuted
-                    ? QStringLiteral("🔇 %1%")
-                          .arg(realMicVolumePercent)
-                    : QStringLiteral("🎙 %1%")
-                          .arg(realMicVolumePercent)
-            },
-            false,
-            linuxKeyCode
-        );
-
-        continue;
-    }
-
-    if (linuxKeyCode == 164 ||
-        linuxKeyCode == 207) {
-
-        updateMediaState();
-
-        addVisualEntry(
-            QStringList{
-                mprisPlaybackStatus ==
-                    QStringLiteral("Playing")
-                    ? QStringLiteral("Ⅱ")
-                    : QStringLiteral("▶")
-            },
-            false,
-            linuxKeyCode
-        );
-
-        continue;
-    }
-
-    if (linuxKeyCode == 439) {
-
-        updateMediaState();
-
-        addVisualEntry(
-            QStringList{
-                mprisLoopStatus ==
-                    QStringLiteral("Playlist")
-                    ? QStringLiteral("↻∞")
-                    : QStringLiteral("↻")
-            },
-            false,
-            linuxKeyCode
-        );
-
-        continue;
-    }
-
-    if (linuxKeyCode == 410) {
-
-        updateMediaState();
-
-        addVisualEntry(
-            QStringList{
-                mprisShuffle
-                    ? QStringLiteral("🔀")
-                    : QStringLiteral("⇄")
-            },
-            false,
-            linuxKeyCode
-        );
-
-        continue;
-    }
-
-    if (linuxKeyCode == 224 ||
-        linuxKeyCode == 225 ||
-        linuxKeyCode == 243 ||
-        linuxKeyCode == 592 ||
-        linuxKeyCode == 593) {
-
-        updateMediaState();
-
-        addVisualEntry(
-            QStringList{
-                QStringLiteral("☀ %1%")
-                    .arg(brightnessPercent)
-            },
-            false,
-            linuxKeyCode
-        );
-
-        continue;
-    }
-
-    if (linuxKeyCode == 238) {
-
-        updateMediaState();
-
-        addVisualEntry(
-            QStringList{
-                wifiEnabled &&
-                wifiHardwareEnabled
-                    ? QStringLiteral("📶")
-                    : QStringLiteral("⊘")
-            },
-            false,
-            linuxKeyCode
-        );
-
-        continue;
-    }
-
-    if (linuxKeyCode == 246) {
-
-        updateMediaState();
-
-        addVisualEntry(
-            QStringList{
-                wwanEnabled &&
-                wwanHardwareEnabled
-                    ? QStringLiteral("📡")
-                    : QStringLiteral("⊘")
-            },
-            false,
-            linuxKeyCode
-        );
-
-        continue;
-    }
-
-    if (linuxKeyCode == 237) {
-
-        updateMediaState();
-
-        addVisualEntry(
-            QStringList{
-                bluetoothPowered
-                    ? QStringLiteral("ᛒ")
-                    : QStringLiteral("⊘")
-            },
-            false,
-            linuxKeyCode
-        );
-
-        continue;
-    }
-
-    if (linuxKeyCode == 247) {
-
-        updateMediaState();
-
-        addVisualEntry(
-            QStringList{
-                allRadiosEnabled
-                    ? QStringLiteral("📡")
-                    : QStringLiteral("⊘")
-            },
-            false,
-            linuxKeyCode
-        );
-
-        continue;
-    }
-
-    if (linuxKeyCode == 530 ||
-        linuxKeyCode == 531 ||
-        linuxKeyCode == 532) {
-
-        updateMediaState();
-
-        addVisualEntry(
-            QStringList{
-                touchpadEnabled
-                    ? QStringLiteral("⌁")
-                    : QStringLiteral("⊘")
-            },
-            false,
-            linuxKeyCode
-        );
-
-        continue;
-    }
-
-    /*
-     * -----------------------------------------------------------
-     * TECLA NORMAL SIN MODIFICADORES
-     * -----------------------------------------------------------
-     */
-
-    addKeyboardVisualEntry(
-        QStringList{
-            visualName
-        },
-        false,
-        linuxKeyCode
-    );
-
-    continue;
-}
-
-
-/*
- * ---------------------------------------------------------------
- * RELEASE
- * ---------------------------------------------------------------
- */
-
-if (released) {
-
-    /*
-     * -----------------------------------------------------------
-     * MODIFICADOR
-     * -----------------------------------------------------------
-     */
-
-    if (modifier) {
 
         /*
-         * Primero actualizamos XKB.
+         * -----------------------------------------------------------
+         * PRESS
+         * -----------------------------------------------------------
          */
-        updateXkbState(
-            linuxKeyCode,
-            false
-        );
 
-        /*
-         * Después retiramos el modificador físico.
-         */
-        pressedModifiers.remove(
-            keyName
-        );
+        if (pressed) {
 
-        if (keyName == QStringLiteral("KEY_LEFTSHIFT") ||
-            keyName == QStringLiteral("KEY_RIGHTSHIFT")) {
+            /*
+             * Primero actualizamos XKB.
+             */
+            updateXkbState(
+                linuxKeyCode,
+                true
+            );
 
-            for (int i = visualQueue.size() - 1;
-                 i >= 0;
-                 --i) {
+            /*
+             * -------------------------------------------------------
+             * MODIFICADOR
+             * -------------------------------------------------------
+             */
 
-                const VisualEntry &entry =
-                    visualQueue[i];
+            if (modifier) {
 
-                if (!entry.combination ||
-                    entry.keys.size() != 2 ||
-                    entry.keys.at(0) !=
-                        QStringLiteral("Shift")) {
-                    continue;
+                pressedModifiers.insert(
+                    keyName
+                );
+
+                /*
+                 * Shift por sí solo no genera tarjeta.
+                 */
+                if (shift &&
+                    !hasNonShiftModifier()) {
+
+                    update();
+                    return;
                 }
 
-                const QString wheel =
-                    entry.keys.at(1);
+                /*
+                 * Ctrl / Alt / AltGr / Meta empiezan
+                 * una combinación.
+                 */
+                if (hasNonShiftModifier()) {
 
-                if (wheel.startsWith(
-                        QStringLiteral("Wheel ")
-                    ) ||
-                    wheel.startsWith(
-                        QStringLiteral("◎"))) {
+                    startCombinationIfNeeded();
 
-                    visualQueue.remove(i);
-                    break;
+                    currentCombination =
+                        currentModifierNames();
+
+                    update();
+                    return;
                 }
             }
 
+            /*
+             * -------------------------------------------------------
+             * TECLA NORMAL
+             * -------------------------------------------------------
+             */
+
+            const QString name =
+                xkbDisplayName(
+                    linuxKeyCode,
+                    keyName
+                );
+
+            QString visualName =
+                name.isEmpty()
+                    ? displayName(keyName)
+                    : name;
+
+            /*
+             * -------------------------------------------------------
+             * XKB COMPOSE / DEAD KEYS
+             * -------------------------------------------------------
+             */
+
+            if (!modifier &&
+                !hasNonShiftModifier()) {
+
+                if (handleComposeKey(
+                        linuxKeyCode,
+                        visualName
+                    )) {
+
+                    return;
+                }
+            }
+
+            /*
+             * -------------------------------------------------------
+             * SHIFT + TEXTO
+             * -------------------------------------------------------
+             */
+
+            if (shift &&
+                !hasNonShiftModifier() &&
+                isShiftOnlyTextKey(visualName)) {
+
+                addKeyboardVisualEntry(
+                    QStringList{
+                        visualName
+                    },
+                    false
+                );
+
+                return;
+            }
+
+            /*
+             * -------------------------------------------------------
+             * SHIFT + TECLA ESPECIAL
+             * -------------------------------------------------------
+             */
+
+            if (shiftActive &&
+                !isShiftOnlyTextKey(visualName)) {
+
+                startCombinationIfNeeded();
+
+                currentCombination =
+                    currentModifierNames();
+
+                /*
+                 * Si Shift es el único modificador,
+                 * lo añadimos explícitamente.
+                 */
+                if (!hasNonShiftModifier() &&
+                    !currentCombination.contains(
+                        QStringLiteral("Shift")
+                    )) {
+
+                    currentCombination.prepend(
+                        QStringLiteral("Shift")
+                    );
+                }
+
+                currentCombinationKey =
+                    visualName;
+
+                if (!currentCombinationKey.isEmpty() &&
+                    !currentCombination.contains(
+                        currentCombinationKey
+                    )) {
+
+                    currentCombination.append(
+                        currentCombinationKey
+                    );
+                }
+
+                update();
+                return;
+            }
+
+            /*
+             * -------------------------------------------------------
+             * CTRL / ALT / ALTGR / META + TECLA
+             * -------------------------------------------------------
+             */
+
+            if (hasNonShiftModifier()) {
+
+                startCombinationIfNeeded();
+
+                currentCombinationKey =
+                    visualName;
+
+                currentCombination =
+                    currentModifierNames();
+
+                if (!currentCombinationKey.isEmpty() &&
+                    !currentCombination.contains(
+                        currentCombinationKey
+                    )) {
+
+                    currentCombination.append(
+                        currentCombinationKey
+                    );
+                }
+
+                update();
+                return;
+            }
+
+            /*
+             * -------------------------------------------------------
+             * TECLAS CON ESTADO REAL
+             * -------------------------------------------------------
+             */
+
+            if (linuxKeyCode == 113 ||
+                linuxKeyCode == 114 ||
+                linuxKeyCode == 115) {
+
+                updateMediaState();
+
+                addVisualEntry(
+                    QStringList{
+                        realAudioMuted
+                            ? QStringLiteral("🔇 %1%")
+                                  .arg(realAudioVolumePercent)
+                            : QStringLiteral("🔊 %1%")
+                                  .arg(realAudioVolumePercent)
+                    },
+                    false,
+                    linuxKeyCode
+                );
+
+                return;
+            }
+
+            if (linuxKeyCode == 248) {
+
+                updateMediaState();
+
+                addVisualEntry(
+                    QStringList{
+                        realMicMuted
+                            ? QStringLiteral("🔇 %1%")
+                                  .arg(realMicVolumePercent)
+                            : QStringLiteral("🎙 %1%")
+                                  .arg(realMicVolumePercent)
+                    },
+                    false,
+                    linuxKeyCode
+                );
+
+                return;
+            }
+
+            if (linuxKeyCode == 164 ||
+                linuxKeyCode == 207) {
+
+                updateMediaState();
+
+                addVisualEntry(
+                    QStringList{
+                        mprisPlaybackStatus ==
+                            QStringLiteral("Playing")
+                            ? QStringLiteral("Ⅱ")
+                            : QStringLiteral("▶")
+                    },
+                    false,
+                    linuxKeyCode
+                );
+
+                return;
+            }
+
+            if (linuxKeyCode == 439) {
+
+                updateMediaState();
+
+                addVisualEntry(
+                    QStringList{
+                        mprisLoopStatus ==
+                            QStringLiteral("Playlist")
+                            ? QStringLiteral("↻∞")
+                            : QStringLiteral("↻")
+                    },
+                    false,
+                    linuxKeyCode
+                );
+
+                return;
+            }
+
+            if (linuxKeyCode == 410) {
+
+                updateMediaState();
+
+                addVisualEntry(
+                    QStringList{
+                        mprisShuffle
+                            ? QStringLiteral("🔀")
+                            : QStringLiteral("⇄")
+                    },
+                    false,
+                    linuxKeyCode
+                );
+
+                return;
+            }
+
+            if (linuxKeyCode == 224 ||
+                linuxKeyCode == 225 ||
+                linuxKeyCode == 243 ||
+                linuxKeyCode == 592 ||
+                linuxKeyCode == 593) {
+
+                updateMediaState();
+
+                addVisualEntry(
+                    QStringList{
+                        QStringLiteral("☀ %1%")
+                            .arg(brightnessPercent)
+                    },
+                    false,
+                    linuxKeyCode
+                );
+
+                return;
+            }
+
+            if (linuxKeyCode == 238) {
+
+                updateMediaState();
+
+                addVisualEntry(
+                    QStringList{
+                        wifiEnabled &&
+                        wifiHardwareEnabled
+                            ? QStringLiteral("📶")
+                            : QStringLiteral("⊘")
+                    },
+                    false,
+                    linuxKeyCode
+                );
+
+                return;
+            }
+
+            if (linuxKeyCode == 246) {
+
+                updateMediaState();
+
+                addVisualEntry(
+                    QStringList{
+                        wwanEnabled &&
+                        wwanHardwareEnabled
+                            ? QStringLiteral("📡")
+                            : QStringLiteral("⊘")
+                    },
+                    false,
+                    linuxKeyCode
+                );
+
+                return;
+            }
+
+            if (linuxKeyCode == 237) {
+
+                updateMediaState();
+
+                addVisualEntry(
+                    QStringList{
+                        bluetoothPowered
+                            ? QStringLiteral("ᛒ")
+                            : QStringLiteral("⊘")
+                    },
+                    false,
+                    linuxKeyCode
+                );
+
+                return;
+            }
+
+            if (linuxKeyCode == 247) {
+
+                updateMediaState();
+
+                addVisualEntry(
+                    QStringList{
+                        allRadiosEnabled
+                            ? QStringLiteral("📡")
+                            : QStringLiteral("⊘")
+                    },
+                    false,
+                    linuxKeyCode
+                );
+
+                return;
+            }
+
+            if (linuxKeyCode == 530 ||
+                linuxKeyCode == 531 ||
+                linuxKeyCode == 532) {
+
+                updateMediaState();
+
+                addVisualEntry(
+                    QStringList{
+                        touchpadEnabled
+                            ? QStringLiteral("⌁")
+                            : QStringLiteral("⊘")
+                    },
+                    false,
+                    linuxKeyCode
+                );
+
+                return;
+            }
+
+            /*
+             * -------------------------------------------------------
+             * TECLA NORMAL SIN MODIFICADORES
+             * -------------------------------------------------------
+             */
+
+            addKeyboardVisualEntry(
+                QStringList{
+                    visualName
+                },
+                false,
+                linuxKeyCode
+            );
+
+            return;
+        }
+
+        /*
+         * -----------------------------------------------------------
+         * RELEASE
+         * -----------------------------------------------------------
+         */
+
+        if (released) {
+
+            /*
+             * -------------------------------------------------------
+             * MODIFICADOR
+             * -------------------------------------------------------
+             */
+
+            if (modifier) {
+
+                /*
+                 * Primero actualizamos XKB.
+                 */
+                updateXkbState(
+                    linuxKeyCode,
+                    false
+                );
+
+                /*
+                 * Después retiramos el modificador físico.
+                 */
+                pressedModifiers.remove(
+                    keyName
+                );
+
+                if (keyName ==
+                        QStringLiteral("KEY_LEFTSHIFT") ||
+                    keyName ==
+                        QStringLiteral("KEY_RIGHTSHIFT")) {
+
+                    for (int i =
+                             visualQueue.size() - 1;
+                         i >= 0;
+                         --i) {
+
+                        const VisualEntry &entry =
+                            visualQueue[i];
+
+                        if (!entry.combination ||
+                            entry.keys.size() != 2 ||
+                            entry.keys.at(0) !=
+                                QStringLiteral("Shift")) {
+
+                            continue;
+                        }
+
+                        const QString wheel =
+                            entry.keys.at(1);
+
+                        if (wheel.startsWith(
+                                QStringLiteral("Wheel ")
+                            ) ||
+                            wheel.startsWith(
+                                QStringLiteral("◎")
+                            )) {
+
+                            visualQueue.remove(i);
+                            break;
+                        }
+                    }
+
+                    update();
+                }
+
+                /*
+                 * Si todavía queda algún modificador,
+                 * mantenemos la combinación activa.
+                 */
+                if (combinationActive &&
+                    !pressedModifiers.isEmpty()) {
+
+                    update();
+                    return;
+                }
+
+                /*
+                 * Ya no queda ningún modificador:
+                 * cerramos la combinación.
+                 */
+                if (combinationActive &&
+                    pressedModifiers.isEmpty()) {
+
+                    finishCombination();
+                }
+
+                update();
+                return;
+            }
+
+            /*
+             * -------------------------------------------------------
+             * TECLA NORMAL
+             * -------------------------------------------------------
+             *
+             * No mostramos nada al liberar una tecla.
+             * Actualizamos XKB para mantener el estado correcto.
+             */
+
+            updateXkbState(
+                linuxKeyCode,
+                false
+            );
+
             update();
-        }
-
-        /*
-         * Si todavía queda algún modificador, mantenemos
-         * la combinación activa.
-         */
-          /*
-           * Si todavía queda algún modificador físico,
-           * NO reconstruimos la combinación desde cero.
-           *
-           * Es importante conservar los modificadores que ya
-           * participaron en la combinación.
-           *
-           * Ejemplo:
-           *
-           *     Ctrl + Shift + ↓
-           *
-           * Si se suelta Ctrl primero, la combinación debe seguir
-           * siendo:
-           *
-           *     Ctrl + Shift + ↓
-           *
-           * hasta que se libere el último modificador.
-           */
-          if (combinationActive &&
-              !pressedModifiers.isEmpty()) {
-
-              update();
-              continue;
-          }
-
-        /*
-         * Ya no queda ningún modificador:
-         *
-         * ahora sí cerramos la combinación.
-         */
-        if (combinationActive &&
-            pressedModifiers.isEmpty()) {
-
-            finishCombination();
-        }
-
-        update();
-        continue;
-    }
-
-    /*
-     * -----------------------------------------------------------
-     * TECLA NORMAL
-     * -----------------------------------------------------------
-     *
-     * No mostramos nada al liberar una tecla.
-     *
-     * Pero actualizamos XKB para mantener el estado correcto.
-     */
-    updateXkbState(
-        linuxKeyCode,
-        false
-    );
-
-    update();
-}
-
+            return;
         }
     }
+
 
     void addDisplayDurationAction(QMenu &menu)
            {
@@ -6491,15 +5477,11 @@ if (released) {
 
                        updateValue();
 
-                       QSettings settings(
-                           QStringLiteral("KDE"),
-                           QStringLiteral("KDEKeyCast")
-                       );
 
-                       settings.setValue(
-                           QStringLiteral("displayDurationMs"),
+                       settings.setDisplayDurationMs(
                            displayDurationMs
                        );
+
                    }
                );
 
@@ -6637,237 +5619,30 @@ if (released) {
             }
         }
 
-        QSettings settings(
-            QStringLiteral("KDE"),
-            QStringLiteral("KDEKeyCast")
-        );
 
-        settings.setValue(
-            QStringLiteral("onlyShortcuts"),
+        settings.setOnlyShortcuts(
             onlyShortcuts
         );
+
 
         update();
     }
 
+
     void showShortcutHelp()
     {
-        QDialog dialog(this);
-
-        dialog.setWindowTitle(
-            QStringLiteral("Keyboard shortcuts")
-        );
-
-        dialog.setModal(true);
-        dialog.setFixedWidth(360);
-
-        auto *layout =
-            new QVBoxLayout(&dialog);
-
-        layout->setContentsMargins(
-            20,
-            18,
-            20,
-            18
-        );
-
-        layout->setSpacing(8);
-
-        auto addShortcut =
-            [&](const QString &shortcut,
-                const QString &description)
-        {
-            auto *row =
-                new QHBoxLayout();
-
-            row->setSpacing(16);
-
-            auto *keyLabel =
-                new QLabel(shortcut, &dialog);
-
-            auto *descriptionLabel =
-                new QLabel(description, &dialog);
-
-            keyLabel->setMinimumWidth(110);
-            keyLabel->setAlignment(
-                Qt::AlignLeft |
-                Qt::AlignVCenter
-            );
-
-            keyLabel->setStyleSheet(
-                QStringLiteral(
-                    "font-weight: 600;"
-                )
-            );
-
-            descriptionLabel->setAlignment(
-                Qt::AlignLeft |
-                Qt::AlignVCenter
-            );
-
-            row->addWidget(keyLabel);
-            row->addWidget(descriptionLabel, 1);
-
-            layout->addLayout(row);
-        };
-
-        addShortcut(
-            QStringLiteral("Ctrl + Shift + M"),
-            QStringLiteral("Compact mode")
-        );
-
-        addShortcut(
-            QStringLiteral("Ctrl + Shift + T"),
-            QStringLiteral("Always on top")
-        );
-
-        addShortcut(
-            QStringLiteral("Ctrl + Shift + H"),
-            QStringLiteral("Hide keys")
-        );
-
-        addShortcut(
-            QStringLiteral("Ctrl + Shift + C"),
-            QStringLiteral("Click-through")
-        );
-
-        addShortcut(
-            QStringLiteral("Ctrl + Shift + P"),
-            QStringLiteral("Pause input")
-        );
-
-        layout->addSpacing(8);
-
-        auto *closeButton =
-            new QPushButton(
-                QStringLiteral("Close"),
-                &dialog
-            );
-
-        closeButton->setDefault(true);
-
-        connect(
-            closeButton,
-            &QPushButton::clicked,
-            &dialog,
-            &QDialog::accept
-        );
-
-        layout->addWidget(
-            closeButton,
-            0,
-            Qt::AlignRight
-        );
-
+        ShortcutHelpDialog dialog(this);
         dialog.exec();
     }
+
+
 
     void showAbout()
     {
-        QDialog dialog(this);
-
-        dialog.setWindowTitle(
-            QStringLiteral("About KDE KeyCast")
-        );
-
-        dialog.setModal(true);
-        dialog.setFixedWidth(380);
-
-        auto *layout =
-            new QVBoxLayout(&dialog);
-
-        layout->setContentsMargins(
-            24,
-            22,
-            24,
-            20
-        );
-
-        layout->setSpacing(10);
-
-        auto *title =
-            new QLabel(
-                QStringLiteral("KDE KeyCast"),
-                &dialog
-            );
-
-        title->setAlignment(
-            Qt::AlignCenter
-        );
-
-        title->setStyleSheet(
-            QStringLiteral(
-                "font-size: 18px;"
-                "font-weight: 600;"
-            )
-        );
-
-        layout->addWidget(title);
-
-        auto *description =
-            new QLabel(
-                QStringLiteral(
-                    "Keyboard and mouse visualizer "
-                    "for KDE Plasma on Wayland."
-                ),
-                &dialog
-            );
-
-        description->setAlignment(
-            Qt::AlignCenter
-        );
-
-        description->setWordWrap(true);
-
-        layout->addWidget(description);
-
-        layout->addSpacing(6);
-
-        auto *details =
-            new QLabel(
-                QStringLiteral(
-                    "Built with Qt 6 and libxkbcommon."
-                ),
-                &dialog
-            );
-
-        details->setAlignment(
-            Qt::AlignCenter
-        );
-
-        details->setStyleSheet(
-            QStringLiteral(
-                "color: palette(mid);"
-            )
-        );
-
-        layout->addWidget(details);
-
-        layout->addSpacing(8);
-
-        auto *closeButton =
-            new QPushButton(
-                QStringLiteral("Close"),
-                &dialog
-            );
-
-        closeButton->setDefault(true);
-
-        connect(
-            closeButton,
-            &QPushButton::clicked,
-            &dialog,
-            &QDialog::accept
-        );
-
-        layout->addWidget(
-            closeButton,
-            0,
-            Qt::AlignRight
-        );
-
+        AboutDialog dialog(this);
         dialog.exec();
     }
+
     void updateApplicationIcon()
     {
         const QIcon icon(
@@ -6889,21 +5664,22 @@ if (released) {
     wl_display *display = nullptr;
     wl_registry *registry = nullptr;
     wl_seat *seat = nullptr;
-    wl_keyboard *keyboard = nullptr;
 
+    WaylandKeyboard waylandKeyboard;
     WaylandPointer waylandPointer;
 
     QSocketNotifier *waylandNotifier = nullptr;
 
-    xkb_keymap *xkbKeymap = nullptr;
-    xkb_state *xkbState = nullptr;
-    xkb_compose_table *xkbComposeTable = nullptr;
-    xkb_compose_state *xkbComposeState = nullptr;
+    XkbManager xkb;
 
     QStringList composeSequence;
     QVector<QStringList> composeKeyLegends;
 
     QProcess process;
+    KDEKeyCast::InputReader inputReader;
+
+    KDEKeyCast::Settings settings;
+
     QTimer timer;
 
     QVector<VisualEntry> visualQueue;
@@ -7119,123 +5895,99 @@ static QWidgetAction *addSwitchAction(
     return action;
 }
 
+
 void KeyCast::contextMenuEvent(
     QContextMenuEvent *event
 )
 {
-    QMenu menu(this);
+    KDEKeyCast::ContextMenuState state;
 
-    addSwitchAction(
-        menu,
-        QStringLiteral("Compact mode"),
-        compactMode,
-        [this](bool) {
+    state.compactMode =
+        compactMode;
+
+    state.lightMode =
+        lightMode;
+
+    state.hideKeys =
+        hideKeys;
+
+    state.onlyShortcuts =
+        onlyShortcuts;
+
+    state.pauseInput =
+        pauseInput;
+
+    state.clickThrough =
+        clickThrough;
+
+    state.alwaysOnTop =
+        alwaysOnTop;
+
+    KDEKeyCast::ContextMenu::Actions actions;
+
+    actions.toggleCompactMode =
+        [this]() {
             toggleCompactMode();
-        }
-    );
+        };
 
-    addSwitchAction(
-        menu,
-        QStringLiteral("Light mode"),
-        lightMode,
-        [this](bool) {
+    actions.toggleLightMode =
+        [this]() {
             toggleLightMode();
-        }
-    );
+        };
 
-    addSwitchAction(
-        menu,
-        QStringLiteral("Hide keys"),
-        hideKeys,
-        [this](bool) {
+    actions.toggleHideKeys =
+        [this]() {
             toggleHideKeys();
-        }
-    );
+        };
 
-    addSwitchAction(
-        menu,
-        QStringLiteral("Only shortcuts"),
-        onlyShortcuts,
-        [this](bool) {
+    actions.toggleOnlyShortcuts =
+        [this]() {
             toggleOnlyShortcuts();
-        }
-    );
+        };
 
-    addSwitchAction(
-        menu,
-        QStringLiteral("Pause input"),
-        pauseInput,
-        [this](bool) { togglePauseInput(); }
-    );
+    actions.togglePauseInput =
+        [this]() {
+            togglePauseInput();
+        };
 
-    addSwitchAction(
-        menu,
-        QStringLiteral("Click-through"),
-        clickThrough,
-        [this](bool) { toggleClickThrough(); }
-    );
+    actions.toggleClickThrough =
+        [this]() {
+            toggleClickThrough();
+        };
 
-    addSwitchAction(
-        menu,
-        QStringLiteral("Always on top"),
-        alwaysOnTop,
-        [this](bool) {
+    actions.toggleAlwaysOnTop =
+        [this]() {
             toggleAlwaysOnTop();
-        }
-    );
+        };
 
-    addDisplayDurationAction(menu);
+    actions.addDisplayDuration =
+        [this](QMenu &menu) {
+            addDisplayDurationAction(menu);
+        };
 
-    menu.addSeparator();
-
-    QAction *shortcutsAction =
-        menu.addAction(
-            QStringLiteral("Keyboard shortcuts")
-        );
-
-    connect(
-        shortcutsAction,
-        &QAction::triggered,
-        this,
+    actions.showShortcutHelp =
         [this]() {
             showShortcutHelp();
-        }
-    );
+        };
 
-    QAction *aboutAction =
-        menu.addAction(
-            QStringLiteral("About KDE KeyCast")
-        );
-
-    connect(
-        aboutAction,
-        &QAction::triggered,
-        this,
+    actions.showAbout =
         [this]() {
             showAbout();
-        }
-    );
+        };
 
-    menu.addSeparator();
-
-    QAction *quitAction =
-        menu.addAction(
-            QStringLiteral("Quit")
-        );
-
-    connect(
-        quitAction,
-        &QAction::triggered,
-        this,
+    actions.quit =
         []() {
             QApplication::quit();
-        }
-    );
+        };
 
-    menu.exec(
-        event->globalPos()
+    KDEKeyCast::ContextMenu::exec(
+        this,
+        event->globalPos(),
+        state,
+        actions
     );
 }
+
 
 /*
  * ---------------------------------------------------------------
@@ -7246,15 +5998,6 @@ void KeyCast::contextMenuEvent(
 const wl_registry_listener KeyCast::registryListener = {
     KeyCast::registryGlobal,
     KeyCast::registryGlobalRemove
-};
-
-const wl_keyboard_listener KeyCast::keyboardListener = {
-    KeyCast::keyboardKeymap,
-    KeyCast::keyboardEnter,
-    KeyCast::keyboardLeave,
-    KeyCast::keyboardKey,
-    KeyCast::keyboardModifiers,
-    KeyCast::keyboardRepeatInfo
 };
 
 int main(int argc, char **argv)

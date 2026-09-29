@@ -3,29 +3,37 @@
 #include "InputBackend.h"
 
 #include <QProcess>
+#include <QString>
 
 namespace KDEKeyCast {
 
-class ShowMeTheKeyBackend final : public InputBackend
-{
-public:
-    explicit ShowMeTheKeyBackend(
-        QString executable = QStringLiteral("showmethekey-cli"));
 
-    ~ShowMeTheKeyBackend() override;
+    class ShowMeTheKeyBackend final
+        : public QObject
+        , public InputBackend
+    {
+        Q_OBJECT
 
-    bool start(EventHandler handler) override;
-    void stop() override;
+    public:
+        explicit ShowMeTheKeyBackend(
+            QString executable =
+                QStringLiteral("showmethekey-cli")
+        );
 
-    bool isRunning() const;
+        ~ShowMeTheKeyBackend() override;
 
-private:
-    void readInput();
-    void handleLine(const QByteArray &line);
+        bool start(EventHandler handler) override;
+        void stop() override;
 
-    QString executable_;
-    QProcess process_;
-    EventHandler handler_;
-};
+        bool isRunning() const;
+
+    private:
+        void readInput();
+        void handleLine(const QByteArray &line);
+
+        QString executable_;
+        QProcess process_;
+        EventHandler handler_;
+    };
 
 } // namespace KDEKeyCast

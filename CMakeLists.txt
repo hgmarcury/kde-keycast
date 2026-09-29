@@ -3,6 +3,8 @@ cmake_minimum_required(VERSION 3.16)
 
 project(kde-keycast LANGUAGES CXX)
 
+
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
@@ -13,6 +15,7 @@ set(CMAKE_AUTORCC ON)
 find_package(Qt6 REQUIRED COMPONENTS
     Widgets
     DBus
+    Core
 )
 
 find_package(PkgConfig REQUIRED)
@@ -29,16 +32,36 @@ add_executable(kde-keycast
     main.cpp
     resources.qrc
 
+    src/core/VisualEntry.h
+    src/core/Shortcuts.h
+
     src/input/InputEvent.h
     src/input/InputBackend.h
     src/input/ShowMeTheKeyBackend.h
+    src/input/ShowMeTheKeyBackend.cpp
+    src/input/InputReader.h
+    src/input/InputReader.cpp
+
+    src/settings/Settings.h
+    src/settings/Settings.cpp
 
     src/xkb/XkbKeyboard.h
+    src/xkb/XkbManager.h
+    src/xkb/XkbManager.cpp
 
     src/mouse/MouseInput.h
     src/mouse/WaylandPointer.h
+    src/mouse/WaylandPointer.cpp
 
-    src/ui/KeyCastWidget.h
+    src/wayland/WaylandKeyboard.h
+    src/wayland/WaylandKeyboard.cpp
+
+    src/ui/ShortcutHelpDialog.h
+    src/ui/ShortcutHelpDialog.cpp
+    src/ui/AboutDialog.h
+    src/ui/AboutDialog.cpp
+    src/ui/ContextMenu.h
+    src/ui/ContextMenu.cpp
 )
 
 target_include_directories(kde-keycast PRIVATE
@@ -59,6 +82,7 @@ target_compile_options(kde-keycast PRIVATE
 target_link_libraries(kde-keycast PRIVATE
     Qt6::Widgets
     Qt6::DBus
+    Qt6::Core
     ${XKBCOMMON_LIBRARIES}
     ${WAYLAND_LIBRARIES}
 )
@@ -69,8 +93,20 @@ install(
 )
 
 install(
+    PROGRAMS
+        ${CMAKE_CURRENT_SOURCE_DIR}/vendor/showmethekey-cli/showmethekey-cli
+    DESTINATION
+        ${CMAKE_INSTALL_LIBDIR}/kde-keycast
+)
+
+install(
     FILES kde-keycast.desktop
     DESTINATION ${CMAKE_INSTALL_DATAROOTDIR}/applications
+)
+
+install(
+    DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/kwin/kde-keycast/
+    DESTINATION ${CMAKE_INSTALL_DATAROOTDIR}/kwin/scripts/kde-keycast
 )
 
 install(
