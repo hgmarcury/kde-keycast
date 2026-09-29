@@ -1877,7 +1877,6 @@ private:
     bool rfkillStateKnown = false;
 
     int brightnessPercent = 0;
-    bool brightnessStateKnown = false;
 
     bool touchpadEnabled = true;
     bool touchpadStateKnown = false;
@@ -2589,7 +2588,6 @@ private:
                     100
                 );
 
-            brightnessStateKnown =
                 true;
         }
 
