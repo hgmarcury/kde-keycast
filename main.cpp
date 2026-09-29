@@ -3881,10 +3881,6 @@ private:
             compactMode
         );
     }
-    void updateXkbState(int linuxCode, bool pressed)
-    {
-        xkb.updateKey(linuxCode, pressed);
-    }
 
     void resetComposeState()
     {
@@ -4575,7 +4571,7 @@ void addKeyboardVisualEntry(
             /*
              * Primero actualizamos XKB.
              */
-            updateXkbState(
+            xkb.updateKey(
                 linuxKeyCode,
                 true
             );
@@ -4993,7 +4989,7 @@ void addKeyboardVisualEntry(
                 /*
                  * Primero actualizamos XKB.
                  */
-                updateXkbState(
+                xkb.updateKey(
                     linuxKeyCode,
                     false
                 );
@@ -5078,7 +5074,7 @@ void addKeyboardVisualEntry(
              * Actualizamos XKB para mantener el estado correcto.
              */
 
-            updateXkbState(
+            xkb.updateKey(
                 linuxKeyCode,
                 false
             );
