@@ -5017,13 +5017,11 @@ void addKeyboardVisualEntry(
     QVector<VisualEntry> visualQueue;
 
     bool combinationActive = false;
-    bool shiftVisualActive = false;
     QStringList currentCombination;
     QString currentCombinationKey;
 
     QSet<QString> pressedModifiers;
 
-    bool shiftWheelVisualActive = false;
 
     bool compactMode = false;
     bool alwaysOnTop = true;
