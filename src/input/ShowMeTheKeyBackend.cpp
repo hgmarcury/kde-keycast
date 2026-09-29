@@ -1,8 +1,6 @@
 
 #include "ShowMeTheKeyBackend.h"
 
-#include <QJsonDocument>
-#include <QJsonObject>
 #include <QFileInfo>
 #include <QDir>
 #include <QCoreApplication>
@@ -27,7 +25,9 @@ bool ShowMeTheKeyBackend::start(EventHandler handler)
     if (process_.state() != QProcess::NotRunning)
         return true;
 
-    handler_ = std::move(handler);
+    inputReader_.setEventHandler(
+        std::move(handler)
+    );
 
     QString executable;
 
@@ -157,214 +157,11 @@ bool ShowMeTheKeyBackend::isRunning() const
 void ShowMeTheKeyBackend::readInput()
 {
     while (process_.canReadLine()) {
-
         const QByteArray line =
-            process_.readLine().trimmed();
+            process_.readLine();
 
-        if (line.isEmpty())
-            continue;
-
-        handleLine(line);
+        inputReader_.processLine(line);
     }
-}
-
-void ShowMeTheKeyBackend::handleLine(
-    const QByteArray &line)
-{
-    QJsonParseError error;
-
-    const QJsonDocument doc =
-        QJsonDocument::fromJson(
-            line,
-            &error
-        );
-
-    if (error.error !=
-            QJsonParseError::NoError ||
-        !doc.isObject()) {
-
-        return;
-    }
-
-    const QJsonObject obj =
-        doc.object();
-
-    const QString eventName =
-        obj.value(
-            QStringLiteral("event_name")
-        ).toString();
-
-    const QString keyName =
-        obj.value(
-            QStringLiteral("key_name")
-        ).toString();
-
-    const int linuxKeyCode =
-        obj.value(
-            QStringLiteral("key_code")
-        ).toInt(-1);
-
-    const QString state =
-        obj.value(
-            QStringLiteral("state_name")
-        ).toString();
-
-    /*
-     * -------------------------------------------------------
-     * MOUSE WHEEL
-     * -------------------------------------------------------
-     *
-     * POINTER_AXIS no tiene key_name ni key_code.
-     */
-
-    if (eventName ==
-        QStringLiteral("POINTER_AXIS")) {
-
-        const QString axisName =
-            obj.value(
-                QStringLiteral("axis_name")
-            ).toString();
-
-        const double axisValue =
-            obj.value(
-                QStringLiteral("axis_value")
-            ).toDouble();
-
-        InputEvent event;
-
-        event.device =
-            InputDevice::Mouse;
-
-        event.action =
-            InputAction::Wheel;
-
-        event.keyName =
-            axisName;
-
-        event.text =
-            axisName;
-
-        event.wheelDelta =
-            axisValue;
-
-        if (axisName.contains(
-                QStringLiteral("HORIZONTAL"),
-                Qt::CaseInsensitive)) {
-
-            event.mouseAxis =
-                MouseAxis::Horizontal;
-
-        } else {
-
-            event.mouseAxis =
-                MouseAxis::Vertical;
-        }
-
-        if (handler_)
-            handler_(event);
-
-        return;
-    }
-
-    /*
-     * Los eventos que quedan necesitan información
-     * de tecla/botón.
-     */
-
-    if (keyName.isEmpty())
-        return;
-
-    if (linuxKeyCode < 0)
-        return;
-
-    /*
-     * -------------------------------------------------------
-     * MOUSE BUTTON
-     * -------------------------------------------------------
-     */
-
-    if (eventName ==
-        QStringLiteral("POINTER_BUTTON")) {
-
-        if (state !=
-            QStringLiteral("PRESSED")) {
-
-            return;
-        }
-
-        InputEvent event;
-
-        event.device =
-            InputDevice::Mouse;
-
-        event.action =
-            InputAction::Pressed;
-
-        event.linuxCode =
-            linuxKeyCode;
-
-        event.keyName =
-            keyName;
-
-        event.text =
-            keyName;
-
-        if (handler_)
-            handler_(event);
-
-        return;
-    }
-
-    /*
-     * -------------------------------------------------------
-     * KEYBOARD
-     * -------------------------------------------------------
-     */
-
-    if (eventName !=
-        QStringLiteral("KEYBOARD_KEY")) {
-
-        return;
-    }
-
-    InputAction action;
-
-    if (state ==
-        QStringLiteral("PRESSED")) {
-
-        action =
-            InputAction::Pressed;
-
-    } else if (state ==
-               QStringLiteral("RELEASED")) {
-
-        action =
-            InputAction::Released;
-
-    } else {
-
-        return;
-    }
-
-    InputEvent event;
-
-    event.device =
-        InputDevice::Keyboard;
-
-    event.action =
-        action;
-
-    event.linuxCode =
-        linuxKeyCode;
-
-    event.keyName =
-        keyName;
-
-    event.text =
-        keyName;
-
-    if (handler_)
-        handler_(event);
 }
 
 } // namespace KDEKeyCast
