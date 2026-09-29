@@ -2,9 +2,7 @@
 // ============================================================================
 // 1. LIBRERÍAS ESTÁNDAR DE C++ Y DEL SISTEMA (Linux, Wayland, XKB, etc.)
 // ============================================================================
-#include <linux/input-event-codes.h>
 #include <functional>
-#include <algorithm>
 #include <cerrno>
 #include <cstring>
 #include <limits>
