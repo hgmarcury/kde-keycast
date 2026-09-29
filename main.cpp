@@ -338,7 +338,6 @@ public:
         waylandKeyboard.stop();
 
 
-        resetComposeState();
 
     }
     public slots:
@@ -3475,11 +3474,6 @@ private:
         );
     }
 
-    void resetComposeState()
-    {
-        xkb.resetComposeState();
-        composeKeyLegends.clear();
-    }
 
     void resetComposeSequence()
     {
