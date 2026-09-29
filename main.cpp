@@ -2987,12 +2987,6 @@ private:
             key == QStringLiteral("KEY_RIGHTMETA");
     }
 
-    static bool isMouseButton(const QString &key)
-    {
-        return key.startsWith(
-            QStringLiteral("BTN_")
-        );
-    }
 
 
     QString displayName(
