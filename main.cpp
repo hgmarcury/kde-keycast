@@ -2973,19 +2973,6 @@ private:
     // Linux / XKB
     // ---------------------------------------------------------------
 
-    static xkb_keycode_t xkbKeycodeFromLinuxCode(int linuxCode)
-    {
-        if (linuxCode < 0)
-            return XKB_KEYCODE_INVALID;
-
-        /*
-         * Wayland y XKB utilizan el mismo código evdev con un offset
-         * de 8 para obtener el keycode XKB.
-         */
-        return static_cast<xkb_keycode_t>(
-            linuxCode + 8
-        );
-    }
 
     static bool isModifier(const QString &key)
     {
@@ -3005,22 +2992,6 @@ private:
         return key.startsWith(
             QStringLiteral("BTN_")
         );
-    }
-
-    static bool containsControlCharacter(
-        const QString &text
-    )
-    {
-        for (const QChar ch : text) {
-
-            const ushort u =
-                ch.unicode();
-
-            if (u < 0x20 || u == 0x7f)
-                return true;
-        }
-
-        return false;
     }
 
 
