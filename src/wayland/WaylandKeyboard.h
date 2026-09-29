@@ -16,6 +16,8 @@ public:
                            uint32_t modsLocked,
                            uint32_t group)>;
 
+    static bool isXkbV1Keymap(uint32_t format);
+
     WaylandKeyboard();
     ~WaylandKeyboard();
 

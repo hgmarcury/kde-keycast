@@ -10,7 +10,6 @@
 #include <limits>
 #include <sys/mman.h>
 #include <unistd.h>
-#include <wayland-client.h>
 #include <xkbcommon/xkbcommon.h>
 
 // ============================================================================
@@ -146,7 +145,7 @@ public:
 
         waylandKeyboard.setKeymapCallback(
             [this](uint32_t format, int fd, uint32_t size) {
-                if (format != WL_KEYBOARD_KEYMAP_FORMAT_XKB_V1) {
+                if (!WaylandKeyboard::isXkbV1Keymap(format)) {
                     qWarning(
                         "KDE KeyCast: formato de keymap Wayland no soportado"
                     );

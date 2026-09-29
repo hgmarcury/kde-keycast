@@ -139,6 +139,11 @@ void WaylandKeyboard::keyboardRepeatInfo(
 {
 }
 
+bool WaylandKeyboard::isXkbV1Keymap(uint32_t format)
+{
+    return format == WL_KEYBOARD_KEYMAP_FORMAT_XKB_V1;
+}
+
 const wl_keyboard_listener
 WaylandKeyboard::listener = {
     WaylandKeyboard::keyboardKeymap,
