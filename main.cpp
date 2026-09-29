@@ -19,8 +19,6 @@
 #include <QPainterPath>
 #include <QTimer>
 #include <QProcess>
-#include <QJsonDocument>
-#include <QJsonObject>
 #include <QDateTime>
 #include <QFont>
 #include <QFontMetrics>
@@ -29,12 +27,9 @@
 #include <QHash>
 #include <QSet>
 #include <QMouseEvent>
-#include <QWindow>
-#include <QScreen>
 #include <QSocketNotifier>
-#include <QSettings>
-#include <QMoveEvent>
 #include <QDir>
+#include <QWindow>
 #include <QFile>
 #include <QRegularExpression>
 #include <QtDBus/QtDBus>
