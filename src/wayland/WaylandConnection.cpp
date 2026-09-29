@@ -97,6 +97,30 @@ int WaylandConnection::socketFd() const
     return wl_display_get_fd(display_);
 }
 
+bool WaylandConnection::roundtrip()
+{
+    if (!display_)
+        return false;
+
+    return wl_display_roundtrip(display_) >= 0;
+}
+
+bool WaylandConnection::dispatchPending()
+{
+    if (!display_)
+        return false;
+
+    return wl_display_dispatch_pending(display_) >= 0;
+}
+
+bool WaylandConnection::flush()
+{
+    if (!display_)
+        return false;
+
+    return wl_display_flush(display_) >= 0;
+}
+
 void WaylandConnection::registryGlobal(
     void *data,
     wl_registry *registry,

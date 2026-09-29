@@ -21,6 +21,12 @@ public:
 
     int socketFd() const;
 
+    bool roundtrip();
+
+    bool dispatchPending();
+
+    bool flush();
+
 private:
     static void registryGlobal(
         void *data,

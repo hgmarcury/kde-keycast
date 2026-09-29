@@ -3819,9 +3819,7 @@ private:
          * fuerza la llegada del keymap, modifiers iniciales y repeat
          * info.
          */
-        if (wl_display_roundtrip(
-                waylandConnection.display()
-            ) < 0) {
+        if (!waylandConnection.roundtrip()) {
 
             qWarning(
                 "KDE KeyCast: fallo obteniendo el keymap Wayland"
@@ -3856,15 +3854,10 @@ private:
                     if (!waylandConnection.display())
                         return;
 
-                    if (wl_display_dispatch_pending(
-                            waylandConnection.display()) < 0) {
-
+                    if (!waylandConnection.dispatchPending())
                         return;
-                    }
 
-                    wl_display_flush(
-                        waylandConnection.display()
-                    );
+                    waylandConnection.flush();
                 }
             );
         }
