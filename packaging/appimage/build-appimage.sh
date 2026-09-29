@@ -84,6 +84,25 @@ QMAKE=/usr/bin/qmake6 \
     --plugin qt
 
 echo
+echo "==> Removing unused Qt image plugins and dependencies..."
+
+rm -rf "$APPDIR/usr/plugins/imageformats"
+
+rm -f \
+    "$APPDIR/usr/lib/libaom.so.3" \
+    "$APPDIR/usr/lib/libdav1d.so.7" \
+    "$APPDIR/usr/lib/libSvtAv1Enc.so.1" \
+    "$APPDIR/usr/lib/librav1e.so.0" \
+    "$APPDIR/usr/lib/libavif.so.16" \
+    "$APPDIR/usr/lib/libjxl.so.0.11" \
+    "$APPDIR/usr/lib/libjxl_threads.so.0.11" \
+    "$APPDIR/usr/lib/libjxl_cms.so.0.11" \
+    "$APPDIR/usr/lib/libOpenEXR-3_1.so.30" \
+    "$APPDIR/usr/lib/libheif.so.1" \
+    "$APPDIR/usr/lib/libraw.so.23" \
+    "$APPDIR/usr/lib/libQt6Pdf.so.6"
+
+echo
 echo "==> Creating AppRun launcher..."
 
 rm -f "$APPDIR/AppRun"
