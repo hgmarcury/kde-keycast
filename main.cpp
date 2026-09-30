@@ -5301,6 +5301,10 @@ void KeyCast::contextMenuEvent(
 
             success =
                 KDEKeyCast::KWinIntegration::uninstall();
+            if (success) {
+                KDEKeyCast::Settings settings;
+                settings.setKwinIntegrationPromptDisabled(false);
+            }
         }
 
         if (!success) {
