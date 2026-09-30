@@ -60,6 +60,7 @@
 #include "src/ui/AboutDialog.h"
 #include "src/ui/ContextMenu.h"
 #include "src/kwin/KWinIntegration.h"
+#include "src/ui/StatusToast.h"
 
 class KeyCast : public QWidget
 {
@@ -5365,23 +5366,41 @@ int main(int argc, char **argv)
 
     KDEKeyCast::Settings settings;
 
+    KeyCast window;
+
     if (!KDEKeyCast::KWinIntegration::isInstalled() &&
         !settings.kwinIntegrationPromptDisabled()) {
 
-            const KDEKeyCast::KWinIntegrationDialog::Result result =
-                KDEKeyCast::KWinIntegrationDialog::askInstall();
+        const KDEKeyCast::KWinIntegrationDialog::Result result =
+            KDEKeyCast::KWinIntegrationDialog::askInstall();
 
-            if (result.install) {
-                KDEKeyCast::KWinIntegration::install();
+        if (result.install) {
+            KDEKeyCast::StatusToast::showInstalling(&window);
+
+            QString errorMessage;
+
+            const bool success =
+                KDEKeyCast::KWinIntegration::install(
+                    &errorMessage
+                );
+
+            if (success) {
+                KDEKeyCast::StatusToast::showInstalled(&window);
+
+                if (result.dontShowAgain) {
+                    settings.setKwinIntegrationPromptDisabled(true);
+                }
+            } else {
+                KDEKeyCast::StatusToast::showFailed(
+                    &window,
+                    errorMessage
+                );
             }
 
-            if (result.dontShowAgain) {
-                settings.setKwinIntegrationPromptDisabled(true);
-            }
-
+        } else if (result.dontShowAgain) {
+            settings.setKwinIntegrationPromptDisabled(true);
+        }
     }
-
-    KeyCast window;
 
     return app.exec();
 }

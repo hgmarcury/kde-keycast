@@ -136,7 +136,7 @@ bool KWinIntegration::isEnabled()
            ) == 0;
 }
 
-bool KWinIntegration::install()
+bool KWinIntegration::install(QString *errorMessage)
 {
     const QString installer = findInstaller();
 
@@ -157,11 +157,40 @@ bool KWinIntegration::install()
         );
     }
 
-    if (!process.waitForFinished(30000))
-        return false;
+    if (!process.waitForFinished(30000)) {
+        if (errorMessage) {
+            *errorMessage =
+                QStringLiteral(
+                    "La instalación ha tardado demasiado."
+                );
+        }
 
-    return process.exitStatus() == QProcess::NormalExit &&
-           process.exitCode() == 0;
+        return false;
+    }
+
+    if (process.exitStatus() != QProcess::NormalExit) {
+        if (errorMessage) {
+            *errorMessage =
+                QStringLiteral(
+                    "El instalador terminó de forma inesperada."
+                );
+        }
+
+        return false;
+    }
+
+    if (process.exitCode() != 0) {
+        if (errorMessage) {
+            *errorMessage =
+                QString::fromLocal8Bit(
+                    process.readAllStandardError()
+                ).trimmed();
+        }
+
+        return false;
+    }
+
+    return true;
 }
 
 bool KWinIntegration::enable()

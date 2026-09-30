@@ -68,6 +68,7 @@ add_executable(kde-keycast
     src/ui/AboutDialog.cpp
     src/ui/ContextMenu.h
     src/ui/ContextMenu.cpp
+    src/ui/StatusToast.cpp
 
     src/kwin/KWinIntegration.h
     src/kwin/KWinIntegration.cpp

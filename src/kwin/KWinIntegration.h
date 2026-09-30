@@ -1,5 +1,7 @@
 #pragma once
 
+#include <QString>
+
 namespace KDEKeyCast {
 
 class KWinIntegration
@@ -8,7 +10,7 @@ public:
     static bool isInstalled();
     static bool isEnabled();
 
-    static bool install();
+    static bool install(QString *errorMessage = nullptr);
     static bool uninstall();
     static bool enable();
 };
