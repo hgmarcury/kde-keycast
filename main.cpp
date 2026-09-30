@@ -5285,10 +5285,12 @@ void KeyCast::contextMenuEvent(
         };
 
     actions.manageKWinIntegration = [this]() {
-        if (KDEKeyCast::KWinIntegration::isInstalled()) {
-            KDEKeyCast::KWinIntegration::uninstall();
-        } else {
+        if (!KDEKeyCast::KWinIntegration::isInstalled()) {
             KDEKeyCast::KWinIntegration::install();
+        } else if (!KDEKeyCast::KWinIntegration::isEnabled()) {
+            KDEKeyCast::KWinIntegration::enable();
+        } else {
+            KDEKeyCast::KWinIntegration::uninstall();
         }
     };
 

@@ -13,14 +13,17 @@ bool KWinIntegrationDialog::askInstall()
     );
 
     messageBox.setText(
-        QStringLiteral("¿Quieres instalar la integración con KWin?")
+        QStringLiteral(
+            "¿Quieres instalar la integración con KWin?"
+        )
     );
 
     messageBox.setInformativeText(
         QStringLiteral(
-            "La integración permite a KDE KeyCast gestionar "
-            "automáticamente la posición y el estado de la ventana "
-            "en KDE Plasma."
+            "La integración permite que KDE KeyCast gestione "
+            "automáticamente la ventana en KDE Plasma.\n\n"
+            "Podrá mantener la ventana siempre visible y recordar "
+            "su posición al volver a iniciar KDE KeyCast."
         )
     );
 

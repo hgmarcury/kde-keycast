@@ -270,12 +270,21 @@ void ContextMenu::exec(
 
     menu.addSeparator();
 
+    QString kwinIntegrationText;
+
+    if (!state.kwinIntegrationInstalled) {
+        kwinIntegrationText =
+            QStringLiteral("Install KWin integration");
+    } else if (!state.kwinIntegrationEnabled) {
+        kwinIntegrationText =
+            QStringLiteral("Enable KWin integration");
+    } else {
+        kwinIntegrationText =
+            QStringLiteral("KWin integration ✓");
+    }
+
     QAction *kwinAction =
-        menu.addAction(
-            state.kwinIntegrationInstalled
-                ? QStringLiteral("KWin integration")
-                : QStringLiteral("Install KWin integration")
-        );
+        menu.addAction(kwinIntegrationText);
 
     QObject::connect(
         kwinAction,

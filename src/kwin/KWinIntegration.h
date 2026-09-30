@@ -10,6 +10,7 @@ public:
 
     static bool install();
     static bool uninstall();
+    static bool enable();
 };
 
 } // namespace KDEKeyCast
