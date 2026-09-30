@@ -39,4 +39,15 @@ bool KWinIntegrationDialog::askInstall()
     return messageBox.exec() == QMessageBox::Yes;
 }
 
+void KWinIntegrationDialog::showError()
+{
+    QMessageBox::critical(
+        nullptr,
+        QStringLiteral("KDE KeyCast"),
+        QStringLiteral(
+            "No se ha podido modificar la integración con KWin."
+        )
+    );
+}
+
 } // namespace KDEKeyCast

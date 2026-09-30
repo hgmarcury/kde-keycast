@@ -5285,12 +5285,21 @@ void KeyCast::contextMenuEvent(
         };
 
     actions.manageKWinIntegration = [this]() {
+        bool success = false;
+
         if (!KDEKeyCast::KWinIntegration::isInstalled()) {
-            KDEKeyCast::KWinIntegration::install();
+            success =
+                KDEKeyCast::KWinIntegration::install();
         } else if (!KDEKeyCast::KWinIntegration::isEnabled()) {
-            KDEKeyCast::KWinIntegration::enable();
+            success =
+                KDEKeyCast::KWinIntegration::enable();
         } else {
-            KDEKeyCast::KWinIntegration::uninstall();
+            success =
+                KDEKeyCast::KWinIntegration::uninstall();
+        }
+
+        if (!success) {
+            KDEKeyCast::KWinIntegrationDialog::showError();
         }
     };
 
