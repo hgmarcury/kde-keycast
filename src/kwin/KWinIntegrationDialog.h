@@ -1,5 +1,7 @@
 #pragma once
 
+class QWidget;
+
 namespace KDEKeyCast {
 
     class KWinIntegrationDialog
@@ -12,6 +14,7 @@ namespace KDEKeyCast {
         };
 
         static Result askInstall();
+        static bool confirmUninstall(QWidget *parent);
         static void showError();
     };
 

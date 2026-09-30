@@ -5290,10 +5290,15 @@ void KeyCast::contextMenuEvent(
         if (!KDEKeyCast::KWinIntegration::isInstalled()) {
             success =
                 KDEKeyCast::KWinIntegration::install();
+
         } else if (!KDEKeyCast::KWinIntegration::isEnabled()) {
             success =
                 KDEKeyCast::KWinIntegration::enable();
+
         } else {
+            if (!KDEKeyCast::KWinIntegrationDialog::confirmUninstall(this))
+                return;
+
             success =
                 KDEKeyCast::KWinIntegration::uninstall();
         }

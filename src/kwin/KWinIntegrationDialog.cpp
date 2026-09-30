@@ -57,6 +57,23 @@ KWinIntegrationDialog::Result KWinIntegrationDialog::askInstall()
     return result;
 }
 
+bool KWinIntegrationDialog::confirmUninstall(QWidget *parent)
+{
+    const QMessageBox::StandardButton result =
+        QMessageBox::question(
+            parent,
+            QStringLiteral("KDE KeyCast"),
+            QStringLiteral(
+                "¿Quieres desinstalar la integración con KWin?"
+            ),
+            QMessageBox::Yes |
+            QMessageBox::No,
+            QMessageBox::No
+        );
+
+    return result == QMessageBox::Yes;
+}
+
 void KWinIntegrationDialog::showError()
 {
     QMessageBox::critical(
