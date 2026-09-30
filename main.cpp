@@ -5240,6 +5240,12 @@ void KeyCast::contextMenuEvent(
     state.alwaysOnTop =
         alwaysOnTop;
 
+    state.kwinIntegrationInstalled =
+        KDEKeyCast::KWinIntegration::isInstalled();
+
+    state.kwinIntegrationEnabled =
+        KDEKeyCast::KWinIntegration::isEnabled();
+
     KDEKeyCast::ContextMenu::Actions actions;
 
     actions.toggleCompactMode =
@@ -5276,6 +5282,14 @@ void KeyCast::contextMenuEvent(
         [this]() {
             toggleAlwaysOnTop();
         };
+
+    actions.manageKWinIntegration = [this]() {
+        if (KDEKeyCast::KWinIntegration::isInstalled()) {
+            KDEKeyCast::KWinIntegration::uninstall();
+        } else {
+            KDEKeyCast::KWinIntegration::install();
+        }
+    };
 
     actions.addDisplayDuration =
         [this](QMenu &menu) {

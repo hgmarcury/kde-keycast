@@ -268,6 +268,23 @@ void ContextMenu::exec(
     if (actions.addDisplayDuration)
         actions.addDisplayDuration(menu);
 
+    menu.addSeparator();
+
+    QAction *kwinAction =
+        menu.addAction(
+            state.kwinIntegrationInstalled
+                ? QStringLiteral("KWin integration")
+                : QStringLiteral("Install KWin integration")
+        );
+
+    QObject::connect(
+        kwinAction,
+        &QAction::triggered,
+        [actions]() {
+            if (actions.manageKWinIntegration)
+                actions.manageKWinIntegration();
+        }
+    );
 
     menu.addSeparator();
 

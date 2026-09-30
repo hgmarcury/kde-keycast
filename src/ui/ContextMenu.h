@@ -19,6 +19,8 @@ struct ContextMenuState
     bool pauseInput = false;
     bool clickThrough = false;
     bool alwaysOnTop = true;
+    bool kwinIntegrationInstalled = false;
+    bool kwinIntegrationEnabled = false;
 };
 
 class ContextMenu
@@ -33,6 +35,8 @@ public:
         std::function<void()> togglePauseInput;
         std::function<void()> toggleClickThrough;
         std::function<void()> toggleAlwaysOnTop;
+
+        std::function<void()> manageKWinIntegration;
 
         std::function<void()> showShortcutHelp;
         std::function<void()> showAbout;
