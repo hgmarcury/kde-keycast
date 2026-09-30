@@ -162,4 +162,26 @@ void Settings::setOnlyShortcuts(bool value)
     );
 }
 
+bool Settings::kwinIntegrationPromptShown() const
+{
+    const QSettings settings =
+        createSettings();
+
+    return settings.value(
+        QStringLiteral("kwinIntegrationPromptShown"),
+        false
+    ).toBool();
+}
+
+void Settings::setKwinIntegrationPromptShown(bool value)
+{
+    QSettings settings =
+        createSettings();
+
+    settings.setValue(
+        QStringLiteral("kwinIntegrationPromptShown"),
+        value
+    );
+}
+
 } // namespace KDEKeyCast

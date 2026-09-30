@@ -71,6 +71,8 @@ add_executable(kde-keycast
 
     src/kwin/KWinIntegration.h
     src/kwin/KWinIntegration.cpp
+    src/kwin/KWinIntegrationDialog.h
+    src/kwin/KWinIntegrationDialog.cpp
 )
 
 target_compile_definitions(kde-keycast PRIVATE

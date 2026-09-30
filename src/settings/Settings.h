@@ -29,6 +29,9 @@ public:
     bool onlyShortcuts() const;
     void setOnlyShortcuts(bool value);
 
+    bool kwinIntegrationPromptShown() const;
+    void setKwinIntegrationPromptShown(bool value);
+
 private:
     static constexpr qint64 MinDisplayDurationMs = 500;
     static constexpr qint64 MaxDisplayDurationMs = 5000;

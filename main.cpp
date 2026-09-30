@@ -54,6 +54,7 @@
 #include "src/wayland/WaylandConnection.h"
 #include "src/wayland/WaylandKeyboard.h"
 #include "src/input/ShowMeTheKeyBackend.h"
+#include "src/kwin/KWinIntegrationDialog.h"
 #include "src/settings/Settings.h"
 #include "src/ui/ShortcutHelpDialog.h"
 #include "src/ui/AboutDialog.h"
@@ -5341,6 +5342,18 @@ int main(int argc, char **argv)
     app.setDesktopFileName(
         QStringLiteral("kde-keycast")
     );
+
+    KDEKeyCast::Settings settings;
+
+    if (!KDEKeyCast::KWinIntegration::isInstalled() &&
+        !settings.kwinIntegrationPromptShown()) {
+
+        if (KDEKeyCast::KWinIntegrationDialog::askInstall()) {
+            KDEKeyCast::KWinIntegration::install();
+        }
+
+        settings.setKwinIntegrationPromptShown(true);
+    }
 
     KeyCast window;
 
