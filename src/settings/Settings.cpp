@@ -162,26 +162,25 @@ void Settings::setOnlyShortcuts(bool value)
     );
 }
 
-bool Settings::kwinIntegrationPromptShown() const
+bool Settings::kwinIntegrationPromptDisabled() const
 {
     const QSettings settings =
         createSettings();
 
     return settings.value(
-        QStringLiteral("kwinIntegrationPromptShown"),
+        QStringLiteral("kwinIntegrationPromptDisabled"),
         false
     ).toBool();
 }
 
-void Settings::setKwinIntegrationPromptShown(bool value)
+void Settings::setKwinIntegrationPromptDisabled(bool value)
 {
     QSettings settings =
         createSettings();
 
     settings.setValue(
-        QStringLiteral("kwinIntegrationPromptShown"),
+        QStringLiteral("kwinIntegrationPromptDisabled"),
         value
     );
 }
-
 } // namespace KDEKeyCast

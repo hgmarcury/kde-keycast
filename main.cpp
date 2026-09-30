@@ -5357,13 +5357,19 @@ int main(int argc, char **argv)
     KDEKeyCast::Settings settings;
 
     if (!KDEKeyCast::KWinIntegration::isInstalled() &&
-        !settings.kwinIntegrationPromptShown()) {
+        !settings.kwinIntegrationPromptDisabled()) {
 
-        if (KDEKeyCast::KWinIntegrationDialog::askInstall()) {
-            KDEKeyCast::KWinIntegration::install();
-        }
+            const KDEKeyCast::KWinIntegrationDialog::Result result =
+                KDEKeyCast::KWinIntegrationDialog::askInstall();
 
-        settings.setKwinIntegrationPromptShown(true);
+            if (result.install) {
+                KDEKeyCast::KWinIntegration::install();
+            }
+
+            if (result.dontShowAgain) {
+                settings.setKwinIntegrationPromptDisabled(true);
+            }
+
     }
 
     KeyCast window;

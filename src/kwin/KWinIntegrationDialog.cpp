@@ -1,10 +1,11 @@
 #include "KWinIntegrationDialog.h"
 
 #include <QMessageBox>
+#include <QCheckBox>
 
 namespace KDEKeyCast {
 
-bool KWinIntegrationDialog::askInstall()
+KWinIntegrationDialog::Result KWinIntegrationDialog::askInstall()
 {
     QMessageBox messageBox;
 
@@ -36,7 +37,24 @@ bool KWinIntegrationDialog::askInstall()
         QMessageBox::Yes
     );
 
-    return messageBox.exec() == QMessageBox::Yes;
+    QCheckBox *dontShowAgain =
+        new QCheckBox(
+            QStringLiteral("No volver a mostrar"),
+            &messageBox
+        );
+
+    messageBox.setCheckBox(dontShowAgain);
+
+    const bool install =
+        messageBox.exec() == QMessageBox::Yes;
+
+    Result result;
+
+    result.install = install;
+    result.dontShowAgain =
+        dontShowAgain->isChecked();
+
+    return result;
 }
 
 void KWinIntegrationDialog::showError()
