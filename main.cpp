@@ -58,6 +58,7 @@
 #include "src/ui/ShortcutHelpDialog.h"
 #include "src/ui/AboutDialog.h"
 #include "src/ui/ContextMenu.h"
+#include "src/kwin/KWinIntegration.h"
 
 class KeyCast : public QWidget
 {

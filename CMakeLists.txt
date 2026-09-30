@@ -68,6 +68,9 @@ add_executable(kde-keycast
     src/ui/AboutDialog.cpp
     src/ui/ContextMenu.h
     src/ui/ContextMenu.cpp
+
+    src/kwin/KWinIntegration.h
+    src/kwin/KWinIntegration.cpp
 )
 
 target_compile_definitions(kde-keycast PRIVATE
@@ -100,6 +103,15 @@ target_link_libraries(kde-keycast PRIVATE
 install(
     TARGETS kde-keycast
     RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
+)
+
+install(
+    PROGRAMS
+        ${CMAKE_CURRENT_SOURCE_DIR}/packaging/install-kde-keycast.sh
+    DESTINATION
+        ${CMAKE_INSTALL_BINDIR}
+    RENAME
+        install-kde-keycast
 )
 
 install(
