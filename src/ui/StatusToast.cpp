@@ -77,12 +77,52 @@ void StatusToast::showInstalling(QWidget *parent)
     );
 }
 
+void StatusToast::showEnabling(QWidget *parent)
+{
+    showToast(
+        parent,
+        QStringLiteral(
+            "Enabling KWin integration…"
+        )
+    );
+}
+
+void StatusToast::showUninstalling(QWidget *parent)
+{
+    showToast(
+        parent,
+        QStringLiteral(
+            "Uninstalling KWin integration…"
+        )
+    );
+}
+
 void StatusToast::showInstalled(QWidget *parent)
 {
     showToast(
         parent,
         QStringLiteral(
             "✓ KWin integration installed"
+        )
+    );
+}
+
+void StatusToast::showEnabled(QWidget *parent)
+{
+    showToast(
+        parent,
+        QStringLiteral(
+            "✓ KWin integration enabled"
+        )
+    );
+}
+
+void StatusToast::showUninstalled(QWidget *parent)
+{
+    showToast(
+        parent,
+        QStringLiteral(
+            "✓ KWin integration uninstalled"
         )
     );
 }

@@ -5289,22 +5289,61 @@ void KeyCast::contextMenuEvent(
         bool success = false;
 
         if (!KDEKeyCast::KWinIntegration::isInstalled()) {
-            success =
-                KDEKeyCast::KWinIntegration::install();
+            KDEKeyCast::StatusToast::showInstalling(this);
 
+            QString errorMessage;
+
+            success =
+                KDEKeyCast::KWinIntegration::install(
+                    &errorMessage
+                );
+
+            if (success) {
+                KDEKeyCast::StatusToast::showInstalled(this);
+            } else {
+                KDEKeyCast::StatusToast::showFailed(
+                    this,
+                    errorMessage
+                );
+            }
         } else if (!KDEKeyCast::KWinIntegration::isEnabled()) {
+            KDEKeyCast::StatusToast::showEnabling(this);
+
             success =
                 KDEKeyCast::KWinIntegration::enable();
+
+            if (success) {
+                KDEKeyCast::StatusToast::showEnabled(this);
+            } else {
+                KDEKeyCast::StatusToast::showFailed(
+                    this,
+                    QStringLiteral(
+                        "No se pudo activar la integración."
+                    )
+                );
+            }
 
         } else {
             if (!KDEKeyCast::KWinIntegrationDialog::confirmUninstall(this))
                 return;
 
+            KDEKeyCast::StatusToast::showUninstalling(this);
+
             success =
                 KDEKeyCast::KWinIntegration::uninstall();
+
             if (success) {
+                KDEKeyCast::StatusToast::showUninstalled(this);
+
                 KDEKeyCast::Settings settings;
                 settings.setKwinIntegrationPromptDisabled(false);
+            } else {
+                KDEKeyCast::StatusToast::showFailed(
+                    this,
+                    QStringLiteral(
+                        "No se pudo desinstalar la integración."
+                    )
+                );
             }
         }
 
