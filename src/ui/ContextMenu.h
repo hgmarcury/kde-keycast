@@ -37,6 +37,7 @@ public:
         std::function<void()> toggleAlwaysOnTop;
 
         std::function<void()> manageKWinIntegration;
+        std::function<void()> toggleKWinIntegration;
 
         std::function<void()> showShortcutHelp;
         std::function<void()> showAbout;

@@ -5306,22 +5306,6 @@ void KeyCast::contextMenuEvent(
                     errorMessage
                 );
             }
-        } else if (!KDEKeyCast::KWinIntegration::isEnabled()) {
-            KDEKeyCast::StatusToast::showEnabling(this);
-
-            success =
-                KDEKeyCast::KWinIntegration::enable();
-
-            if (success) {
-                KDEKeyCast::StatusToast::showEnabled(this);
-            } else {
-                KDEKeyCast::StatusToast::showFailed(
-                    this,
-                    QStringLiteral(
-                        "No se pudo activar la integración."
-                    )
-                );
-            }
 
         } else {
             if (!KDEKeyCast::KWinIntegrationDialog::confirmUninstall(this))
@@ -5342,6 +5326,48 @@ void KeyCast::contextMenuEvent(
                     this,
                     QStringLiteral(
                         "No se pudo desinstalar la integración."
+                    )
+                );
+            }
+        }
+
+        if (!success) {
+            KDEKeyCast::KWinIntegrationDialog::showError();
+        }
+    };
+
+    actions.toggleKWinIntegration = [this]() {
+        bool success = false;
+
+        if (KDEKeyCast::KWinIntegration::isEnabled()) {
+            KDEKeyCast::StatusToast::showDisabling(this);
+
+            success =
+                KDEKeyCast::KWinIntegration::disable();
+
+            if (success) {
+                KDEKeyCast::StatusToast::showDisabled(this);
+            } else {
+                KDEKeyCast::StatusToast::showFailed(
+                    this,
+                    QStringLiteral(
+                        "No se pudo desactivar la integración."
+                    )
+                );
+            }
+        } else {
+            KDEKeyCast::StatusToast::showEnabling(this);
+
+            success =
+                KDEKeyCast::KWinIntegration::enable();
+
+            if (success) {
+                KDEKeyCast::StatusToast::showEnabled(this);
+            } else {
+                KDEKeyCast::StatusToast::showFailed(
+                    this,
+                    QStringLiteral(
+                        "No se pudo activar la integración."
                     )
                 );
             }

@@ -252,6 +252,65 @@ bool KWinIntegration::enable()
            process.exitCode() == 0;
 }
 
+bool KWinIntegration::disable()
+{
+    const QString kwriteConfig =
+        QStandardPaths::findExecutable(
+            QStringLiteral("kwriteconfig6")
+        );
+
+    const QString qdbus =
+        QStandardPaths::findExecutable(
+            QStringLiteral("qdbus6")
+        );
+
+    if (kwriteConfig.isEmpty() ||
+        qdbus.isEmpty()) {
+
+        return false;
+    }
+
+    QProcess process;
+
+    process.start(
+        kwriteConfig,
+        {
+            QStringLiteral("--file"),
+            QStringLiteral("kwinrc"),
+            QStringLiteral("--group"),
+            QStringLiteral("Plugins"),
+            QStringLiteral("--key"),
+            QStringLiteral("kde-keycastEnabled"),
+            QStringLiteral("--type"),
+            QStringLiteral("bool"),
+            QStringLiteral("false"),
+            QStringLiteral("--notify")
+        }
+    );
+
+    if (!process.waitForFinished(3000))
+        return false;
+
+    if (process.exitStatus() != QProcess::NormalExit ||
+        process.exitCode() != 0)
+        return false;
+
+    process.start(
+        qdbus,
+        {
+            QStringLiteral("org.kde.KWin"),
+            QStringLiteral("/KWin"),
+            QStringLiteral("org.kde.KWin.reconfigure")
+        }
+    );
+
+    if (!process.waitForFinished(3000))
+        return false;
+
+    return process.exitStatus() == QProcess::NormalExit &&
+           process.exitCode() == 0;
+}
+
 bool KWinIntegration::uninstall()
 {
     const QString installer = findInstaller();

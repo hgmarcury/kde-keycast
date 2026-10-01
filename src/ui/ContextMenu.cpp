@@ -275,9 +275,6 @@ void ContextMenu::exec(
     if (!state.kwinIntegrationInstalled) {
         kwinIntegrationText =
             QStringLiteral("Install KWin integration");
-    } else if (!state.kwinIntegrationEnabled) {
-        kwinIntegrationText =
-            QStringLiteral("Enable KWin integration");
     } else {
         kwinIntegrationText =
             QStringLiteral("KWin integration ✓");
@@ -294,6 +291,25 @@ void ContextMenu::exec(
                 actions.manageKWinIntegration();
         }
     );
+
+    if (state.kwinIntegrationInstalled) {
+        const QString toggleText =
+            state.kwinIntegrationEnabled
+                ? QStringLiteral("Disable KWin integration")
+                : QStringLiteral("Enable KWin integration");
+
+        QAction *toggleKwinAction =
+            menu.addAction(toggleText);
+
+        QObject::connect(
+            toggleKwinAction,
+            &QAction::triggered,
+            [actions]() {
+                if (actions.toggleKWinIntegration)
+                    actions.toggleKWinIntegration();
+            }
+        );
+    }
 
     menu.addSeparator();
 

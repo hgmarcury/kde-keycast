@@ -623,6 +623,20 @@ void StatusToast::showEnabling(QWidget *parent)
     );
 }
 
+
+void StatusToast::showDisabling(QWidget *parent)
+{
+    showToast(
+        parent,
+        QStringLiteral(
+            "Disabling KWin integration…"
+        ),
+        ToastOperation::Enabling,
+        900
+    );
+}
+
+
 void StatusToast::showUninstalling(QWidget *parent)
 {
     showToast(
@@ -656,6 +670,21 @@ void StatusToast::showEnabled(QWidget *parent)
         parent,
         QStringLiteral(
             "✓ KWin integration enabled"
+        ),
+        ToastOperation::Independent,
+        1800,
+        700,
+        200,
+        0.78
+    );
+}
+
+void StatusToast::showDisabled(QWidget *parent)
+{
+    showToast(
+        parent,
+        QStringLiteral(
+            "✓ KWin integration disabled"
         ),
         ToastOperation::Independent,
         1800,
