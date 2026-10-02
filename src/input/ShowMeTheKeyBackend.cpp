@@ -40,7 +40,7 @@ bool ShowMeTheKeyBackend::start(EventHandler handler)
         QDir(QCoreApplication::applicationDirPath())
             .absoluteFilePath(
                 QStringLiteral(
-                    "../vendor/showmethekey-cli/showmethekey-cli"
+                    "showmethekey-cli"
                 )
             );
 

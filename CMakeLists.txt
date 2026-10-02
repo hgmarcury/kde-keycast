@@ -4,7 +4,7 @@
 
 cmake_minimum_required(VERSION 3.16)
 
-project(kde-keycast LANGUAGES CXX)
+project(kde-keycast LANGUAGES C CXX)
 
 find_package(ECM REQUIRED NO_MODULE)
 set(CMAKE_MODULE_PATH ${ECM_MODULE_PATH})
@@ -26,6 +26,20 @@ find_package(Qt6 REQUIRED COMPONENTS
 )
 
 find_package(PkgConfig REQUIRED)
+
+find_package(Threads REQUIRED)
+
+pkg_check_modules(LIBINPUT REQUIRED IMPORTED_TARGET
+    libinput
+)
+
+pkg_check_modules(LIBUDEV REQUIRED IMPORTED_TARGET
+    libudev
+)
+
+pkg_check_modules(LIBEVDEV REQUIRED IMPORTED_TARGET
+    libevdev
+)
 
 pkg_check_modules(XKBCOMMON REQUIRED
     xkbcommon
@@ -79,6 +93,17 @@ add_executable(kde-keycast
     src/kwin/KWinIntegrationDialog.cpp
 )
 
+add_executable(showmethekey-cli
+    vendor/showmethekey-cli/main.c
+)
+
+target_link_libraries(showmethekey-cli PRIVATE
+    PkgConfig::LIBINPUT
+    PkgConfig::LIBUDEV
+    PkgConfig::LIBEVDEV
+    Threads::Threads
+)
+
 target_compile_definitions(kde-keycast PRIVATE
     KDE_KEYCAST_LIBEXECDIR="${KDE_INSTALL_LIBEXECDIR}"
 )
@@ -121,10 +146,8 @@ install(
 )
 
 install(
-    PROGRAMS
-        ${CMAKE_CURRENT_SOURCE_DIR}/vendor/showmethekey-cli/showmethekey-cli
-    DESTINATION
-        ${KDE_INSTALL_LIBEXECDIR}/kde-keycast
+    TARGETS showmethekey-cli
+    RUNTIME DESTINATION ${KDE_INSTALL_LIBEXECDIR}/kde-keycast
 )
 
 install(
