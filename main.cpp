@@ -1,3 +1,8 @@
+/*
+ * SPDX-FileCopyrightText: 2026 Marc G.
+ * SPDX-License-Identifier: GPL-3.0-or-later
+ */
+
 
 // ============================================================================
 // 1. LIBRERÍAS ESTÁNDAR DE C++ Y DEL SISTEMA (Linux, Wayland, XKB, etc.)

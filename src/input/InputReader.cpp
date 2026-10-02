@@ -1,3 +1,8 @@
+/*
+ * SPDX-FileCopyrightText: 2026 Marc G.
+ * SPDX-License-Identifier: GPL-3.0-or-later
+ */
+
 #include "InputReader.h"
 
 #include <QJsonDocument>
