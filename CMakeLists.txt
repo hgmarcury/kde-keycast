@@ -29,16 +29,35 @@ find_package(PkgConfig REQUIRED)
 
 find_package(Threads REQUIRED)
 
-pkg_check_modules(LIBINPUT REQUIRED IMPORTED_TARGET
-    libinput
+find_path(LIBINPUT_INCLUDE_DIR
+    NAMES libinput.h
+    REQUIRED
 )
 
-pkg_check_modules(LIBUDEV REQUIRED IMPORTED_TARGET
-    libudev
+find_path(LIBUDEV_INCLUDE_DIR
+    NAMES libudev.h
+    REQUIRED
 )
 
-pkg_check_modules(LIBEVDEV REQUIRED IMPORTED_TARGET
-    libevdev
+find_path(LIBEVDEV_INCLUDE_DIR
+    NAMES libevdev/libevdev.h
+    PATH_SUFFIXES libevdev-1.0
+    REQUIRED
+)
+
+find_library(LIBINPUT_LIBRARY
+    NAMES input
+    REQUIRED
+)
+
+find_library(LIBUDEV_LIBRARY
+    NAMES udev
+    REQUIRED
+)
+
+find_library(LIBEVDEV_LIBRARY
+    NAMES evdev
+    REQUIRED
 )
 
 pkg_check_modules(XKBCOMMON REQUIRED
@@ -97,10 +116,16 @@ add_executable(showmethekey-cli
     vendor/showmethekey-cli/main.c
 )
 
+target_include_directories(showmethekey-cli PRIVATE
+    ${LIBINPUT_INCLUDE_DIR}
+    ${LIBUDEV_INCLUDE_DIR}
+    ${LIBEVDEV_INCLUDE_DIR}
+)
+
 target_link_libraries(showmethekey-cli PRIVATE
-    PkgConfig::LIBINPUT
-    PkgConfig::LIBUDEV
-    PkgConfig::LIBEVDEV
+    ${LIBINPUT_LIBRARY}
+    ${LIBUDEV_LIBRARY}
+    ${LIBEVDEV_LIBRARY}
     Threads::Threads
 )
 
