@@ -1,0 +1,75 @@
+# Third-Party Notices
+
+KDE KeyCast includes and redistributes third-party software. The licenses and copyright
+notices of those components remain applicable.
+
+## ShowMeTheKey
+
+KDE KeyCast includes a modified version of the ShowMeTheKey command-line backend.
+
+The bundled backend is located in:
+
+    vendor/showmethekey-cli/
+
+The original ShowMeTheKey license is preserved in:
+
+    vendor/showmethekey-cli/LICENSE
+
+License: Apache License 2.0.
+
+The KDE KeyCast version contains modifications to add physical mouse wheel event
+detection.
+
+## AppImage build tools
+
+The repository includes prebuilt AppImage build tools used to create the KDE KeyCast
+AppImage:
+
+- linuxdeploy — MIT License
+- linuxdeploy-plugin-qt — MIT License
+- appimagetool — MIT License
+
+These tools are build-time dependencies only. They are not runtime dependencies of
+KDE KeyCast and are not included as components of the generated KDE KeyCast AppImage.
+
+The official projects are:
+
+- linuxdeploy: https://github.com/linuxdeploy/linuxdeploy
+- linuxdeploy-plugin-qt: https://github.com/linuxdeploy/linuxdeploy-plugin-qt
+- appimagetool: https://github.com/AppImage/appimagetool
+
+## AppImage runtime components
+
+The generated KDE KeyCast AppImage contains third-party runtime libraries and
+components, including Qt, Wayland, xkbcommon, libinput, libevdev and other
+dependencies.
+
+These components retain their respective licenses and copyright notices.
+
+The AppImage build process preserves the copyright and license information provided
+by the corresponding packages under:
+
+    usr/share/doc/
+
+within the AppImage.
+
+The complete licensing information for each bundled component should be consulted
+there when redistributing or modifying the AppImage.
+
+## KDE and other external dependencies
+
+KDE KeyCast also uses external software and libraries provided by the target Linux
+distribution, including Qt, KDE Frameworks, Wayland, xkbcommon, libinput, libevdev,
+libudev and related system components.
+
+These dependencies are not part of the KDE KeyCast source code and remain subject
+to their respective licenses.
+
+## Project license
+
+The KDE KeyCast source code is distributed under the GNU General Public License,
+version 3 or later (GPL-3.0-or-later).
+
+See:
+
+    LICENSE

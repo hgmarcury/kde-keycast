@@ -144,7 +144,21 @@ EOF
 chmod +x "$APPDIR/AppRun"
 
 echo
-echo "==> AppDir prepared by linuxdeploy."
+echo "==> Preparing AppStream metadata for appimagetool..."
+
+mv \
+    "$APPDIR/kde-keycast.desktop" \
+    "$APPDIR/com.github.hgmarcury.kde-keycast.desktop"
+
+cp \
+    "$APPDIR/usr/share/metainfo/com.github.hgmarcury.kde-keycast.metainfo.xml" \
+    "$APPDIR/usr/share/metainfo/com.github.hgmarcury.kde-keycast.appdata.xml"
+
+rm \
+    "$APPDIR/usr/share/metainfo/com.github.hgmarcury.kde-keycast.metainfo.xml"
+
+echo
+echo "==> AppDir prepared"
 
 echo
 echo "==> AppDir contents:"

@@ -1,46 +1,130 @@
 
 # KDE KeyCast AppImage
 
-Este directorio contiene los scripts y herramientas utilizados para generar una AppImage de KDE KeyCast.
+This directory contains the scripts and tools used to build the KDE KeyCast AppImage.
 
-## Contenido previsto
+## Contents
 
-La AppImage debe incluir los componentes necesarios para ejecutar KDE KeyCast de forma independiente de la instalación del proyecto, incluyendo:
+The AppImage bundles the components required to run KDE KeyCast independently from a source-tree or development installation, including:
 
 * `kde-keycast`
-* el backend `showmethekey-cli` incluido y modificado para KDE KeyCast
-* las bibliotecas de tiempo de ejecución necesarias
-* la integración de escritorio de KDE KeyCast
-* los iconos de KDE KeyCast
+* the bundled and modified `showmethekey-cli` backend
+* required runtime libraries
+* Qt platform and Wayland integration components
+* KDE KeyCast desktop integration files
+* KDE KeyCast icons
+* KWin integration files
 
-El backend incluido se utiliza directamente y no se sustituye por una instalación externa de `showmethekey-cli`.
+The bundled `showmethekey-cli` backend is always used. KDE KeyCast does not fall back to an externally installed `showmethekey-cli`.
 
-## Construcción
+## Building
 
-El script principal para generar la AppImage es:
+The main build script is:
 
 ```text
 packaging/appimage/build-appimage.sh
 ```
 
-Las herramientas auxiliares utilizadas durante la construcción se mantienen fuera del repositorio cuando corresponde y no forman parte de las dependencias de ejecución de KDE KeyCast.
+From the project root, run:
 
-## Integración con KWin
+```bash
+./packaging/appimage/build-appimage.sh
+```
 
-La integración con KWin se instala separadamente en la configuración del usuario de KDE.
+The script expects a successful KDE KeyCast development build in:
 
-Esto es necesario porque el script de KWin debe registrarse en la configuración de KWin del usuario y no simplemente copiarse dentro de la AppImage.
+```text
+build/kde-keycast
+```
 
-## Dependencias y licencias
+If necessary, build the project first:
 
-La AppImage puede contener bibliotecas de terceros necesarias para su ejecución. Estas bibliotecas mantienen sus respectivas licencias.
+```bash
+cmake --build build -j$(nproc)
+```
 
-El código propio de KDE KeyCast está distribuido bajo GPL-3.0-or-later.
+The generated AppImage is placed in:
 
-El backend incluido de ShowMeTheKey está distribuido bajo Apache License 2.0. Su licencia se conserva en:
+```text
+dist/kde-keycast-x86_64.AppImage
+```
+
+### Build tools
+
+The following tools are included in this directory and are used only while building the AppImage:
+
+* `linuxdeploy`
+* `linuxdeploy-plugin-qt`
+* `appimagetool`
+
+These are build tools and are not runtime dependencies of KDE KeyCast.
+
+## Running the AppImage
+
+Make the AppImage executable:
+
+```bash
+chmod +x dist/kde-keycast-x86_64.AppImage
+```
+
+Then run it:
+
+```bash
+./dist/kde-keycast-x86_64.AppImage
+```
+
+KDE KeyCast requires a KDE Plasma Wayland session for its intended input and desktop integration.
+
+## KWin integration
+
+KDE KeyCast's optional KWin integration is installed separately because the KWin script must be registered in the user's KDE configuration.
+
+The AppImage provides an installation mode for this:
+
+```bash
+./dist/kde-keycast-x86_64.AppImage --install
+```
+
+This installs and enables the KDE KeyCast KWin script for the current user.
+
+The integration can also be managed using the installed `install-kde-keycast` script.
+
+To remove the KWin integration:
+
+```bash
+install-kde-keycast --uninstall
+```
+
+The KWin integration is optional. KDE KeyCast itself does not require the KWin script to display keyboard and mouse input.
+
+## Licensing
+
+The KDE KeyCast source code is distributed under:
+
+```text
+GPL-3.0-or-later
+```
+
+The bundled ShowMeTheKey backend is distributed under:
+
+```text
+Apache License 2.0
+```
+
+Its original license is preserved in:
 
 ```text
 vendor/showmethekey-cli/LICENSE
 ```
 
-Las herramientas utilizadas para construir la AppImage no deben confundirse con las dependencias de ejecución incluidas en la AppImage.
+The AppImage may also contain third-party runtime libraries and components. Their respective licenses remain applicable to those components.
+
+The build tools used to create the AppImage are separate from the runtime components bundled into it.
+
+For the licensing of third-party components, see the project documentation and `THIRD-PARTY-NOTICES` when provided.
+
+## Notes
+
+The current AppImage build script targets `x86_64` Linux systems and currently uses the Qt and Wayland library paths provided by the build host.
+
+The resulting AppImage is intended for use on Linux systems running KDE Plasma on Wayland.
