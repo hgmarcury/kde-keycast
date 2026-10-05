@@ -1,114 +1,207 @@
 
 # KDE KeyCast
 
-Indicador visual de teclado y ratón para Linux/KDE, pensado especialmente para presentaciones, tutoriales y screencasts.
+Visual keyboard and mouse indicator for Linux/KDE, designed especially for presentations, tutorials, and screencasts.
 
-KDE KeyCast muestra visualmente las teclas y combinaciones pulsadas, utilizando XKB para interpretar correctamente el teclado según el layout activo.
+KDE KeyCast displays pressed keys and key combinations visually, using XKB to correctly interpret keyboard input according to the active keyboard layout.
 
-## Características
+## Features
 
-* Captura eventos de teclado mediante el backend incluido de ShowMeTheKey.
-* Utiliza XKB para resolver correctamente las teclas según el layout del sistema.
-* Muestra caracteres transformados por `Shift`.
-* Muestra combinaciones con `Ctrl`, `Alt`, `AltGr`, `Meta` y `Shift` cuando corresponde.
-* Representa las teclas especiales mediante nombres o símbolos apropiados.
-* Detecta y muestra eventos de ratón, incluidos los desplazamientos de la rueda.
-* Incluye un modo compacto para mostrar únicamente las combinaciones relevantes.
-* Integración con KDE/Plasma mediante un icono en la bandeja del sistema.
-* Incluye integración opcional con KWin.
+* Captures keyboard events using the bundled ShowMeTheKey backend.
+* Uses XKB to correctly resolve keys according to the system keyboard layout.
+* Displays characters produced by `Shift`.
+* Displays combinations involving `Ctrl`, `Alt`, `AltGr`, `Meta`, and `Shift` when appropriate.
+* Represents special keys using appropriate names or symbols.
+* Detects and displays mouse events, including mouse wheel scrolling.
+* Includes a compact mode for displaying only relevant key combinations.
+* Provides KDE/Plasma integration through a system tray icon.
+* Includes optional KWin integration.
 
-## Estado del proyecto
+## Project status
 
-KDE KeyCast se encuentra actualmente en desarrollo.
+KDE KeyCast is currently under development.
 
-El código principal ha sido reorganizado en componentes independientes para facilitar su mantenimiento y futuras mejoras.
+The main codebase has been reorganized into independent components to make the project easier to maintain and extend.
 
-La distribución y el proceso de instalación continúan en desarrollo, especialmente para facilitar la instalación en distintas distribuciones KDE/Plasma.
+Distribution and installation are still being developed, with a focus on making KDE KeyCast easier to install across different Linux distributions running KDE/Plasma.
 
-## Dependencias
+## Dependencies
 
-KDE KeyCast utiliza, entre otras, las siguientes tecnologías:
+### Build dependencies
+
+KDE KeyCast requires the following development dependencies:
+
+* CMake
+* A C/C++ compiler with C++17 support
+* Extra CMake Modules (ECM)
+* pkg-config
+* Qt 6
+* libxkbcommon
+* Wayland
+* libinput
+* libudev
+* libevdev
+
+The project does not require an external installation of `showmethekey-cli`.
+
+The ShowMeTheKey backend used by KDE KeyCast is included in the project and compiled from source. It is a modified version of ShowMeTheKey that adds support for detecting physical mouse wheel events.
+
+### Runtime dependencies
+
+Once installed, KDE KeyCast uses the corresponding runtime libraries for:
 
 * Qt 6
-* KDE Frameworks / KDE ECM
+* libxkbcommon
 * Wayland
-* XKB / libxkbcommon
-* ShowMeTheKey como backend de captura de entrada
+* libinput
+* libudev
+* libevdev
 
-El backend de ShowMeTheKey utilizado por KDE KeyCast está incluido en el propio proyecto y contiene modificaciones específicas para detectar eventos de rueda del ratón.
+These libraries are normally provided by a modern Linux distribution running KDE/Plasma.
 
-KDE KeyCast utiliza siempre este backend incluido y no depende de una instalación externa de `showmethekey-cli`.
+### Optional KWin integration
 
-## Compilación
+KWin integration requires the following KDE tools:
 
-El proyecto utiliza CMake.
+* `kpackagetool6`
+* `kwriteconfig6`
+* `qdbus6`
 
-Una vez configurado el directorio de compilación:
+These tools are not required to run KDE KeyCast normally.
+
+## Building
+
+The project uses CMake.
+
+For example:
 
 ```bash
+cmake -S . -B build
 cmake --build build -j$(nproc)
 ```
 
-Para instalar en un directorio de prueba:
+To install into a local test directory:
 
 ```bash
 cmake --install build --prefix "$(pwd)/build/test-install"
 ```
 
-Los requisitos concretos de desarrollo y el proceso de instalación para distintas distribuciones se documentarán conforme avance el sistema de empaquetado.
+The following package instructions apply to building KDE KeyCast from source.
+
+### Debian / Ubuntu
+
+```bash
+sudo apt install \
+    build-essential \
+    cmake \
+    extra-cmake-modules \
+    pkg-config \
+    qt6-base-dev \
+    libxkbcommon-dev \
+    libwayland-dev \
+    libinput-dev \
+    libudev-dev \
+    libevdev-dev
+```
+
+### Fedora
+
+```bash
+sudo dnf install \
+    gcc \
+    gcc-c++ \
+    cmake \
+    extra-cmake-modules \
+    pkgconf-pkg-config \
+    qt6-qtbase-devel \
+    libxkbcommon-devel \
+    wayland-devel \
+    libinput-devel \
+    systemd-devel \
+    libevdev-devel
+```
+
+### Arch Linux
+
+```bash
+sudo pacman -S \
+    base-devel \
+    cmake \
+    extra-cmake-modules \
+    pkgconf \
+    qt6-base \
+    libxkbcommon \
+    wayland \
+    libinput \
+    libevdev
+```
+
+Package names may vary between distribution releases and derivatives.
+
+## Optional KWin integration
+
+KDE KeyCast includes a script for optionally installing its KWin integration:
+
+```text
+install-kde-keycast
+```
+
+KWin integration is not enabled automatically when KDE KeyCast is installed.
+
+The script can install, update, or remove the KWin script and reconfigure KWin when necessary.
+
+KDE KeyCast can run normally without KWin integration.
 
 ## AppImage
 
-El proyecto incluye herramientas y scripts para generar una AppImage.
+The project includes tools and scripts for building an AppImage.
 
-La documentación específica del proceso se encuentra en:
+Specific documentation for the AppImage build process is available in:
 
 ```text
 packaging/appimage/README.md
 ```
 
-La AppImage está pensada para incluir KDE KeyCast junto con el backend de ShowMeTheKey utilizado por el proyecto y las dependencias necesarias para su ejecución.
+## License
 
-## Licencia
-
-El código propio de KDE KeyCast está distribuido bajo:
+The KDE KeyCast code is distributed under:
 
 **GNU General Public License v3.0 or later (GPL-3.0-or-later)**
 
-El texto completo de la licencia se encuentra en:
+The full license text is available in:
 
 ```text
 LICENSE
 ```
 
-El backend incluido de ShowMeTheKey es un componente separado distribuido bajo:
+The bundled ShowMeTheKey backend is a separate component distributed under:
 
 **Apache License 2.0**
 
-Su licencia original se conserva en:
+Its original license is preserved in:
 
 ```text
 vendor/showmethekey-cli/LICENSE
 ```
 
-El código del backend ha sido modificado para KDE KeyCast, incluyendo soporte para eventos físicos de rueda del ratón.
+The backend has been modified for KDE KeyCast, including support for physical mouse wheel events.
 
-Las bibliotecas y demás componentes de terceros conservan sus respectivas licencias.
+Third-party libraries and components retain their respective licenses.
 
 ## Copyright
 
 Copyright © 2026 Marc G.
 
-KDE KeyCast no es un proyecto oficial de KDE ni está afiliado oficialmente con KDE e.V.
+KDE KeyCast is not an official KDE project and is not affiliated with KDE e.V.
 
-## Contribuciones
+## Contributing
 
-Las contribuciones, correcciones y sugerencias son bienvenidas.
+Contributions, fixes, and suggestions are welcome.
 
-Antes de realizar cambios importantes, se recomienda abrir una discusión o issue para explicar la propuesta.
+For significant changes, opening a discussion or issue before implementation is recommended.
 
-## Proyecto
+## Project
 
-KDE KeyCast está desarrollado como un proyecto independiente para Linux/KDE.
+KDE KeyCast is developed as an independent project for Linux/KDE.
 
-El objetivo es proporcionar un indicador de entrada sencillo y adecuado para presentaciones, grabaciones y screencasts.
+The goal is to provide a simple input indicator suitable for presentations, recordings, and screencasts.
