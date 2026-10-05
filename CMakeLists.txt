@@ -4,7 +4,10 @@
 
 cmake_minimum_required(VERSION 3.16)
 
-project(kde-keycast LANGUAGES C CXX)
+project(kde-keycast
+  VERSION 1.0.0
+  LANGUAGES C CXX
+)
 
 find_package(ECM REQUIRED NO_MODULE)
 set(CMAKE_MODULE_PATH ${ECM_MODULE_PATH})
