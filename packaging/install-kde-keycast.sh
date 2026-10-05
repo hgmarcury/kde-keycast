@@ -5,7 +5,8 @@
 
 set -euo pipefail
 
-PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 
 KPACKAGETOOL="$(command -v kpackagetool6 || true)"
 KWritECONFIG="$(command -v kwriteconfig6 || true)"
@@ -71,7 +72,21 @@ echo "==> Installing KDE KeyCast KWin integration..."
 if [[ $# -ge 1 ]]; then
     KWIN_PACKAGE="$1"
 else
-    KWIN_PACKAGE="$PROJECT_ROOT/kwin/kde-keycast"
+    INSTALLED_KWIN_PACKAGE="$SCRIPT_DIR/../share/kwin/scripts/kde-keycast"
+    SOURCE_KWIN_PACKAGE="$PROJECT_ROOT/kwin/kde-keycast"
+
+    if [[ -d "$INSTALLED_KWIN_PACKAGE" ]]; then
+        KWIN_PACKAGE="$INSTALLED_KWIN_PACKAGE"
+    elif [[ -d "$SOURCE_KWIN_PACKAGE" ]]; then
+        KWIN_PACKAGE="$SOURCE_KWIN_PACKAGE"
+    else
+        echo "ERROR: KDE KeyCast KWin package not found."
+        echo
+        echo "Searched:"
+        echo "  $INSTALLED_KWIN_PACKAGE"
+        echo "  $SOURCE_KWIN_PACKAGE"
+        exit 1
+    fi
 fi
 
 if [[ ! -d "$KWIN_PACKAGE" ]]; then
