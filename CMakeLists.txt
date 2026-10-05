@@ -119,6 +119,7 @@ add_executable(showmethekey-cli
     vendor/showmethekey-cli/main.c
 )
 
+
 target_include_directories(showmethekey-cli PRIVATE
     ${LIBINPUT_INCLUDE_DIR}
     ${LIBUDEV_INCLUDE_DIR}
@@ -130,6 +131,12 @@ target_link_libraries(showmethekey-cli PRIVATE
     ${LIBUDEV_LIBRARY}
     ${LIBEVDEV_LIBRARY}
     Threads::Threads
+)
+
+configure_file(
+    ${CMAKE_CURRENT_SOURCE_DIR}/metainfo/com.github.hgmarcury.kde-keycast.metainfo.xml.in
+    ${CMAKE_CURRENT_BINARY_DIR}/com.github.hgmarcury.kde-keycast.metainfo.xml
+    @ONLY
 )
 
 target_compile_definitions(kde-keycast PRIVATE
@@ -192,4 +199,11 @@ install(
     FILES ${CMAKE_CURRENT_SOURCE_DIR}/resources/icons/kde-keycast-light.svg
     DESTINATION ${CMAKE_INSTALL_DATAROOTDIR}/icons/hicolor/scalable/apps
     RENAME kde-keycast.svg
+)
+
+install(
+    FILES
+        ${CMAKE_CURRENT_BINARY_DIR}/com.github.hgmarcury.kde-keycast.metainfo.xml
+    DESTINATION
+        ${CMAKE_INSTALL_DATAROOTDIR}/metainfo
 )
