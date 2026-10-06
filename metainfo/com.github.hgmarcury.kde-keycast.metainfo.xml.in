@@ -4,7 +4,7 @@
 
   <name>KDE KeyCast</name>
   <summary>Keyboard and mouse visualizer for KDE Plasma on Wayland</summary>
-  <url type="homepage">https://github.com/hgmarcury/kde-keycast</url>
+
 
   <metadata_license>FSFAP</metadata_license>
   <project_license>GPL-3.0-or-later</project_license>

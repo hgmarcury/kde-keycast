@@ -48,6 +48,9 @@
 #include <QDBusMessage>
 #include <QSlider>
 #include <QIcon>
+#include <QFileInfo>
+#include <QSaveFile>
+#include <QStandardPaths>
 
 // ============================================================================
 // 3. TUS ARCHIVOS PROPIOS (Al ir al final, ya "heredan" el conocimiento de Qt)
@@ -4972,16 +4975,164 @@ void addKeyboardVisualEntry(
         dialog.exec();
     }
 
+    QString userDesktopFilePath() const
+    {
+        const QString applicationsDir =
+            QStandardPaths::writableLocation(
+                QStandardPaths::ApplicationsLocation
+            );
+
+        if (applicationsDir.isEmpty())
+            return {};
+
+        return QDir(applicationsDir).filePath(
+            QStringLiteral("kde-keycast.desktop")
+        );
+    }
+
+    bool ensureUserDesktopFile() const
+    {
+        const QString userPath = userDesktopFilePath();
+
+        if (userPath.isEmpty())
+            return false;
+
+        if (QFile::exists(userPath))
+            return true;
+
+        const QStringList applicationPaths =
+            QStandardPaths::standardLocations(
+                QStandardPaths::ApplicationsLocation
+            );
+
+        QString systemPath;
+
+        for (const QString &path : applicationPaths) {
+
+            const QString candidate =
+                QDir(path).filePath(
+                    QStringLiteral("kde-keycast.desktop")
+                );
+
+            if (candidate == userPath)
+                continue;
+
+            if (QFile::exists(candidate)) {
+                systemPath = candidate;
+                break;
+            }
+        }
+
+        if (systemPath.isEmpty())
+            return false;
+
+        QDir().mkpath(
+            QFileInfo(userPath).absolutePath()
+        );
+
+        QFile source(systemPath);
+
+        if (!source.open(QIODevice::ReadOnly))
+            return false;
+
+        QSaveFile destination(userPath);
+
+        if (!destination.open(QIODevice::WriteOnly))
+            return false;
+
+        const QByteArray data = source.readAll();
+
+        if (destination.write(data) != data.size()) {
+            destination.cancelWriting();
+            return false;
+        }
+
+        return destination.commit();
+    }
+
+    void updateDesktopFileIcon(const QString &iconName)
+    {
+        if (!ensureUserDesktopFile())
+            return;
+
+        const QString desktopFilePath =
+            userDesktopFilePath();
+
+        QFile file(desktopFilePath);
+
+        if (!file.open(QIODevice::ReadOnly | QIODevice::Text))
+            return;
+
+        QString contents =
+            QString::fromUtf8(file.readAll());
+
+        file.close();
+
+        const QString newIconLine =
+            QStringLiteral("Icon=") + iconName;
+
+        QStringList lines =
+            contents.split(QLatin1Char('\n'));
+
+        bool found = false;
+        bool changed = false;
+
+        for (QString &line : lines) {
+
+            if (line.startsWith(QStringLiteral("Icon="))) {
+
+                found = true;
+
+                if (line != newIconLine) {
+                    line = newIconLine;
+                    changed = true;
+                }
+
+                break;
+            }
+        }
+
+        if (!found || !changed)
+            return;
+
+        const QString newContents =
+            lines.join(QLatin1Char('\n'));
+
+        QSaveFile saveFile(desktopFilePath);
+
+        if (!saveFile.open(QIODevice::WriteOnly | QIODevice::Text))
+            return;
+
+        const QByteArray data =
+            newContents.toUtf8();
+
+        if (saveFile.write(data) != data.size()) {
+            saveFile.cancelWriting();
+            return;
+        }
+
+        saveFile.commit();
+    }
+
     void updateApplicationIcon()
     {
+        const bool light = lightMode;
+
+        const QString iconName =
+            light
+                ? QStringLiteral("keycast-light")
+                : QStringLiteral("keycast-dark");
+
         const QIcon icon(
-            lightMode
-                ? QStringLiteral(":/icons/kde-keycast-light.svg")
-                : QStringLiteral(":/icons/kde-keycast-dark.svg")
+            light
+                ? QStringLiteral(":/icons/keycast-light.svg")
+                : QStringLiteral(":/icons/keycast-dark.svg")
         );
 
         setWindowIcon(icon);
         QApplication::setWindowIcon(icon);
+
+        updateDesktopFileIcon(iconName);
     }
 
     /*

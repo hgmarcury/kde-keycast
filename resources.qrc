@@ -6,7 +6,7 @@ SPDX-License-Identifier: GPL-3.0-or-later
 
 <RCC>
     <qresource prefix="/">
-        <file alias="icons/kde-keycast-light.svg">resources/icons/kde-keycast-light.svg</file>
-        <file alias="icons/kde-keycast-dark.svg">resources/icons/kde-keycast-dark.svg</file>
+        <file alias="icons/keycast-light.svg">resources/icons/keycast-light.svg</file>
+        <file alias="icons/keycast-dark.svg">resources/icons/keycast-dark.svg</file>
     </qresource>
 </RCC>

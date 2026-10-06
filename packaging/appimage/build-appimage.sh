@@ -134,6 +134,22 @@ do
 done
 
 if [[ "${1:-}" == "--install" ]]; then
+    USER_DATA_DIR="${XDG_DATA_HOME:-$HOME/.local/share}"
+
+    mkdir -p \
+        "$USER_DATA_DIR/applications" \
+        "$USER_DATA_DIR/icons/hicolor/scalable/apps"
+
+    install \
+        -m 0644 \
+        "$APPDIR/com.github.hgmarcury.kde-keycast.desktop" \
+        "$USER_DATA_DIR/applications/com.github.hgmarcury.kde-keycast.desktop"
+
+    install \
+        -m 0644 \
+        "$APPDIR/usr/share/icons/hicolor/scalable/apps/kde-keycast.svg" \
+        "$USER_DATA_DIR/icons/hicolor/scalable/apps/kde-keycast.svg"
+
     exec "$APPDIR/usr/bin/install-kde-keycast" \
         "$APPDIR/usr/share/kwin/scripts/kde-keycast"
 fi
@@ -177,6 +193,7 @@ echo "==> Generating AppImage..."
 APPIMAGE="$DIST_DIR/kde-keycast-x86_64.AppImage"
 
 "$APPIMAGETOOL" \
+    --no-appstream \
     "$APPDIR" \
     "$APPIMAGE"
 

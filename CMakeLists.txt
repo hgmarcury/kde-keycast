@@ -196,9 +196,11 @@ install(
 )
 
 install(
-    FILES ${CMAKE_CURRENT_SOURCE_DIR}/resources/icons/kde-keycast-light.svg
-    DESTINATION ${CMAKE_INSTALL_DATAROOTDIR}/icons/hicolor/scalable/apps
-    RENAME kde-keycast.svg
+    FILES
+        ${CMAKE_CURRENT_SOURCE_DIR}/resources/icons/keycast-light.svg
+        ${CMAKE_CURRENT_SOURCE_DIR}/resources/icons/keycast-dark.svg
+    DESTINATION
+        ${CMAKE_INSTALL_DATAROOTDIR}/icons/hicolor/scalable/apps
 )
 
 install(
