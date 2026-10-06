@@ -4089,6 +4089,9 @@ void addKeyboardVisualEntry(
             ) &&
             pressedModifiers.contains(
                 QStringLiteral("KEY_LEFTSHIFT")
+            ) &&
+            pressedModifiers.contains(
+                QStringLiteral("KEY_LEFTALT")
             )) {
 
             toggleCompactMode();
@@ -4101,6 +4104,9 @@ void addKeyboardVisualEntry(
             ) &&
             pressedModifiers.contains(
                 QStringLiteral("KEY_LEFTSHIFT")
+            ) &&
+            pressedModifiers.contains(
+                QStringLiteral("KEY_LEFTALT")
             )) {
 
             toggleHideKeys();

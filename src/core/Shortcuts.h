@@ -8,13 +8,13 @@
 namespace KeyCastShortcuts
 {
     constexpr const char *CompactMode =
-        "Ctrl + Shift + M";
+        "Ctrl + Alt + Shift + M";
 
     constexpr const char *AlwaysOnTop =
-        "Ctrl + Shift + T";
+        "Ctrl + Alt + Shift + T";
 
     constexpr const char *HideKeys =
-        "Ctrl + Shift + H";
+        "Ctrl + Alt + Shift + H";
 
     constexpr const char *ClickThrough =
         "Ctrl + Alt + Shift + C";
