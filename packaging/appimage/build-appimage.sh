@@ -133,6 +133,33 @@ do
     fi
 done
 
+if [[ "${1:-}" == "--uninstall" ]]; then
+    USER_DATA_DIR="${XDG_DATA_HOME:-$HOME/.local/share}"
+
+    INSTALLER="$APPDIR/usr/bin/install-kde-keycast"
+
+    echo "==> Uninstalling KDE KeyCast AppImage..."
+
+    if [[ -x "$INSTALLER" ]]; then
+        echo "==> Removing KDE KeyCast KWin integration..."
+
+        if ! "$INSTALLER" --uninstall; then
+            echo "WARNING: Could not remove the KWin integration."
+            echo "Continuing with KDE KeyCast file removal..."
+        fi
+    fi
+
+    echo "==> Removing KDE KeyCast user files..."
+
+    rm -f \
+        "$USER_DATA_DIR/applications/kde-keycast.desktop" \
+        "$USER_DATA_DIR/icons/hicolor/scalable/apps/keycast-light.svg" \
+        "$USER_DATA_DIR/icons/hicolor/scalable/apps/keycast-dark.svg"
+
+    echo "==> KDE KeyCast AppImage uninstalled."
+    exit 0
+fi
+
 if [[ "${1:-}" == "--install" ]]; then
     USER_DATA_DIR="${XDG_DATA_HOME:-$HOME/.local/share}"
 

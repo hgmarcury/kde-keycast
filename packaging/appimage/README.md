@@ -75,21 +75,28 @@ Then run it:
 
 KDE KeyCast requires a KDE Plasma Wayland session for its intended input and desktop integration.
 
+
 ## KWin integration
 
 KDE KeyCast's optional KWin integration is installed separately because the KWin script must be registered in the user's KDE configuration.
 
-The AppImage provides an installation mode for this:
+When using the AppImage, the recommended way to install the integration is:
 
 ```bash
 ./dist/kde-keycast-x86_64.AppImage --install
 ```
 
-This installs and enables the KDE KeyCast KWin script for the current user.
+This installs and enables the KDE KeyCast KWin script for the current user, and also creates the user's desktop launcher and icon files.
 
-The integration can also be managed using the installed `install-kde-keycast` script.
+To remove an AppImage installation, use:
 
-To remove the KWin integration:
+```bash
+./dist/kde-keycast-x86_64.AppImage --uninstall
+```
+
+This removes the AppImage-installed desktop launcher, icons, and KWin integration. It does not remove KDE KeyCast user configuration.
+
+The bundled `install-kde-keycast` script can also be used to manage the KWin integration directly when working with a CMake installation:
 
 ```bash
 install-kde-keycast --uninstall

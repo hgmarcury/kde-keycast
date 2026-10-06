@@ -139,6 +139,12 @@ configure_file(
     @ONLY
 )
 
+configure_file(
+    ${CMAKE_CURRENT_SOURCE_DIR}/packaging/uninstall-kde-keycast.sh.in
+    ${CMAKE_CURRENT_BINARY_DIR}/uninstall-kde-keycast
+    @ONLY
+)
+
 target_compile_definitions(kde-keycast PRIVATE
     KDE_KEYCAST_LIBEXECDIR="${KDE_INSTALL_LIBEXECDIR}"
 )
@@ -178,6 +184,13 @@ install(
         ${CMAKE_INSTALL_BINDIR}
     RENAME
         install-kde-keycast
+)
+
+install(
+    PROGRAMS
+        ${CMAKE_CURRENT_BINARY_DIR}/uninstall-kde-keycast
+    DESTINATION
+        ${CMAKE_INSTALL_BINDIR}
 )
 
 install(

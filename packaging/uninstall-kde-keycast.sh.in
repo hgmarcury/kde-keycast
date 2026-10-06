@@ -1,0 +1,51 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PREFIX="$(cd "$SCRIPT_DIR/.." && pwd)"
+
+BINDIR="$SCRIPT_DIR"
+DATADIR="$PREFIX/@CMAKE_INSTALL_DATAROOTDIR@"
+LIBEXECDIR="$PREFIX/@CMAKE_INSTALL_LIBEXECDIR@"
+
+echo "==> Uninstalling KDE KeyCast..."
+
+INSTALLER="$BINDIR/install-kde-keycast"
+
+if [[ -x "$INSTALLER" ]]; then
+    echo "==> Removing KDE KeyCast KWin integration..."
+
+    if [[ -n "${SUDO_USER:-}" && "${SUDO_USER}" != "root" ]]; then
+        if ! sudo -u "$SUDO_USER" -H "$INSTALLER" --uninstall; then
+            echo "WARNING: Could not remove the KWin integration."
+            echo "Continuing with KDE KeyCast file removal..."
+        fi
+    elif [[ "$(id -u)" -eq 0 ]]; then
+        echo "WARNING: Cannot determine the desktop user."
+        echo "Skipping KWin integration removal."
+    else
+        if ! "$INSTALLER" --uninstall; then
+            echo "WARNING: Could not remove the KWin integration."
+            echo "Continuing with KDE KeyCast file removal..."
+        fi
+    fi
+fi
+
+echo "==> Removing KDE KeyCast files..."
+
+rm -f \
+    "$BINDIR/kde-keycast" \
+    "$BINDIR/install-kde-keycast" \
+    "$BINDIR/uninstall-kde-keycast" \
+    "$LIBEXECDIR/kde-keycast/showmethekey-cli" \
+    "$DATADIR/applications/kde-keycast.desktop" \
+    "$DATADIR/icons/hicolor/scalable/apps/keycast-light.svg" \
+    "$DATADIR/icons/hicolor/scalable/apps/keycast-dark.svg" \
+    "$DATADIR/metainfo/com.github.hgmarcury.kde-keycast.metainfo.xml"
+
+rm -rf \
+    "$DATADIR/kwin/scripts/kde-keycast" \
+    "$LIBEXECDIR/kde-keycast"
+
+echo "==> KDE KeyCast uninstalled."
