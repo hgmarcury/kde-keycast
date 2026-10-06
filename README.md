@@ -23,7 +23,7 @@ KDE KeyCast is currently under development.
 
 The main codebase has been reorganized into independent components to make the project easier to maintain and extend.
 
-Distribution and installation are still being developed, with a focus on making KDE KeyCast easier to install across different Linux distributions running KDE/Plasma.
+KDE KeyCast currently provides CMake-based installation and an AppImage build, including optional KWin integration.
 
 ## Dependencies
 
@@ -87,6 +87,47 @@ cmake --install build --prefix "$(pwd)/build/test-install"
 ```
 
 The following package instructions apply to building KDE KeyCast from source.
+
+## Installing from CMake
+
+After building the project, KDE KeyCast can be installed into a chosen prefix:
+
+```bash
+cmake --install build --prefix "$HOME/.local"
+```
+
+For a system-wide installation, use a suitable system prefix with the required privileges:
+
+```bash
+sudo cmake --install build --prefix /usr/local
+```
+
+The installation includes KDE KeyCast, the bundled ShowMeTheKey backend, the desktop entry, icons, metadata, and the KWin integration files.
+
+It also installs the following helper scripts:
+
+* `install-kde-keycast`
+* `uninstall-kde-keycast`
+
+KWin integration is optional and is not enabled automatically by the CMake installation.
+
+## Uninstalling
+
+A CMake installation can be removed using the installed `uninstall-kde-keycast` script.
+
+For example, when installed into `/usr/local`:
+
+```bash
+sudo /usr/local/bin/uninstall-kde-keycast
+```
+
+When installed into the user's local prefix:
+
+```bash
+~/.local/bin/uninstall-kde-keycast
+```
+
+The uninstall script removes the installed KDE KeyCast files and KWin integration. User configuration is preserved.
 
 ### Debian / Ubuntu
 
@@ -156,7 +197,31 @@ KDE KeyCast can run normally without KWin integration.
 
 The project includes tools and scripts for building an AppImage.
 
-Specific documentation for the AppImage build process is available in:
+The resulting AppImage can be run directly without installation:
+
+```bash
+./dist/kde-keycast-x86_64.AppImage
+```
+
+The AppImage also provides optional installation and uninstallation helpers.
+
+To install the AppImage for the current user:
+
+```bash
+./dist/kde-keycast-x86_64.AppImage --install
+```
+
+This creates the user's desktop launcher and icon files and installs and enables the optional KDE KeyCast KWin integration.
+
+To remove the AppImage installation:
+
+```bash
+./dist/kde-keycast-x86_64.AppImage --uninstall
+```
+
+This removes the AppImage-installed launcher, icons, and KWin integration. User configuration is preserved.
+
+Detailed instructions for building the AppImage are available in:
 
 ```text
 packaging/appimage/README.md
