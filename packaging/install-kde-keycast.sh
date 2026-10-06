@@ -30,30 +30,25 @@ fi
 if [[ "${1:-}" == "--uninstall" ]]; then
     echo "==> Uninstalling KDE KeyCast KWin integration..."
 
-    if "$KPACKAGETOOL" \
-        --type=KWin/Script \
-        --show \
-        kde-keycast >/dev/null 2>&1
-    then
-        echo "==> Disabling KDE KeyCast KWin script..."
+   USER_KWIN_PACKAGE="$HOME/.local/share/kwin/scripts/kde-keycast"
 
-        "$KWritECONFIG" \
-            --file kwinrc \
-            --group Plugins \
-            --key kde-keycastEnabled \
-            --type bool \
-            false \
-            --notify
+   if [[ -d "$USER_KWIN_PACKAGE" ]]; then
+       echo "==> Disabling KDE KeyCast KWin script..."
+       "$KWritECONFIG" \
+           --file kwinrc \
+           --group Plugins \
+           --key kde-keycastEnabled \
+           --type bool \
+           false \
+           --notify
 
-        echo "==> Removing KDE KeyCast KWin script..."
-
-        "$KPACKAGETOOL" \
-            --type=KWin/Script \
-            --remove \
-            kde-keycast
-    else
-        echo "==> KDE KeyCast KWin script is not installed."
-    fi
+       echo "==> Removing KDE KeyCast KWin script..."
+       "$KPACKAGETOOL" \
+           --type=KWin/Script \
+           --remove kde-keycast
+   else
+       echo "==> KDE KeyCast KWin script is not installed."
+   fi
 
     echo "==> Reconfiguring KWin..."
 

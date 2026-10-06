@@ -73,33 +73,26 @@ QString findKWinPackage(const QString &installer)
 
 namespace KDEKeyCast {
 
-bool KWinIntegration::isInstalled()
-{
-    const QString kpackageTool =
-        QStandardPaths::findExecutable(
-            QStringLiteral("kpackagetool6")
-        );
+    bool KWinIntegration::isInstalled()
+    {
+        const QString dataLocation =
+            QStandardPaths::writableLocation(
+                QStandardPaths::GenericDataLocation);
 
-    if (kpackageTool.isEmpty())
-        return false;
+        if (dataLocation.isEmpty())
+            return false;
 
-    QProcess process;
+        const QString packagePath =
+            QDir(dataLocation)
+                .absoluteFilePath(
+                    QStringLiteral("kwin/scripts/kde-keycast"));
 
-    process.start(
-        kpackageTool,
-        {
-            QStringLiteral("--type=KWin/Script"),
-            QStringLiteral("--show"),
-            QStringLiteral("kde-keycast")
-        }
-    );
-
-    if (!process.waitForFinished(3000))
-        return false;
-
-    return process.exitStatus() == QProcess::NormalExit &&
-           process.exitCode() == 0;
-}
+        return QFileInfo(packagePath).isDir() &&
+               QFileInfo(
+                   QDir(packagePath)
+                       .absoluteFilePath(QStringLiteral("metadata.json")))
+                   .isFile();
+    }
 
 bool KWinIntegration::isEnabled()
 {

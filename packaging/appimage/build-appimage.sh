@@ -88,7 +88,7 @@ QMAKE=/usr/bin/qmake6 \
     --appdir "$APPDIR" \
     --executable "$APPDIR/usr/bin/kde-keycast" \
     --desktop-file "$APPDIR/usr/share/applications/kde-keycast.desktop" \
-    --icon-file "$APPDIR/usr/share/icons/hicolor/scalable/apps/kde-keycast.svg" \
+    --icon-file "$APPDIR/usr/share/icons/hicolor/scalable/apps/keycast-dark.svg" \
     --plugin qt
 
 echo
@@ -140,15 +140,33 @@ if [[ "${1:-}" == "--install" ]]; then
         "$USER_DATA_DIR/applications" \
         "$USER_DATA_DIR/icons/hicolor/scalable/apps"
 
-    install \
-        -m 0644 \
+    APPIMAGE_PATH="${APPIMAGE:-}"
+
+    if [[ -z "$APPIMAGE_PATH" ]]; then
+        echo "ERROR: Cannot determine the AppImage path."
+        exit 1
+    fi
+
+    APPIMAGE_PATH="$(readlink -f "$APPIMAGE_PATH")"
+
+    DESKTOP_FILE="$USER_DATA_DIR/applications/kde-keycast.desktop"
+
+    sed \
+        "s|^Exec=.*|Exec=$APPIMAGE_PATH|" \
         "$APPDIR/com.github.hgmarcury.kde-keycast.desktop" \
-        "$USER_DATA_DIR/applications/com.github.hgmarcury.kde-keycast.desktop"
+        > "$DESKTOP_FILE"
+
+    chmod 0644 "$DESKTOP_FILE"
 
     install \
         -m 0644 \
-        "$APPDIR/usr/share/icons/hicolor/scalable/apps/kde-keycast.svg" \
-        "$USER_DATA_DIR/icons/hicolor/scalable/apps/kde-keycast.svg"
+        "$APPDIR/usr/share/icons/hicolor/scalable/apps/keycast-light.svg" \
+        "$USER_DATA_DIR/icons/hicolor/scalable/apps/keycast-light.svg"
+
+    install \
+        -m 0644 \
+        "$APPDIR/usr/share/icons/hicolor/scalable/apps/keycast-dark.svg" \
+        "$USER_DATA_DIR/icons/hicolor/scalable/apps/keycast-dark.svg"
 
     exec "$APPDIR/usr/bin/install-kde-keycast" \
         "$APPDIR/usr/share/kwin/scripts/kde-keycast"
