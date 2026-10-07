@@ -10,7 +10,7 @@ PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 
 KPACKAGETOOL="$(command -v kpackagetool6 || true)"
 KWritECONFIG="$(command -v kwriteconfig6 || true)"
-QDBUS="$(command -v qdbus6 || true)"
+QDBUS="$(command -v qdbus6 || command -v qdbus-qt6 || true)"
 
 if [[ -z "$KPACKAGETOOL" ]]; then
     echo "ERROR: kpackagetool6 not found."
@@ -23,7 +23,7 @@ if [[ -z "$KWritECONFIG" ]]; then
 fi
 
 if [[ -z "$QDBUS" ]]; then
-    echo "ERROR: qdbus6 not found."
+    echo "ERROR: qdbus6 or qdbus-qt6 not found."
     exit 1
 fi
 

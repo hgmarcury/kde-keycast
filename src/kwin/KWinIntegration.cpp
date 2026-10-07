@@ -69,6 +69,21 @@ QString findKWinPackage(const QString &installer)
     return {};
 }
 
+QString findQdbus()
+{
+    const QString qdbus6 =
+        QStandardPaths::findExecutable(
+            QStringLiteral("qdbus6")
+        );
+
+    if (!qdbus6.isEmpty())
+        return qdbus6;
+
+    return QStandardPaths::findExecutable(
+        QStringLiteral("qdbus-qt6")
+    );
+}
+
 } // namespace
 
 namespace KDEKeyCast {
@@ -198,10 +213,7 @@ bool KWinIntegration::enable()
             QStringLiteral("kwriteconfig6")
         );
 
-    const QString qdbus =
-        QStandardPaths::findExecutable(
-            QStringLiteral("qdbus6")
-        );
+    const QString qdbus = findQdbus();
 
     if (kwriteConfig.isEmpty() ||
         qdbus.isEmpty()) {
@@ -257,10 +269,7 @@ bool KWinIntegration::disable()
             QStringLiteral("kwriteconfig6")
         );
 
-    const QString qdbus =
-        QStandardPaths::findExecutable(
-            QStringLiteral("qdbus6")
-        );
+    const QString qdbus = findQdbus();
 
     if (kwriteConfig.isEmpty() ||
         qdbus.isEmpty()) {

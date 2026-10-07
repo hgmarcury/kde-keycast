@@ -52,7 +52,7 @@ KDE KeyCast requires the following development dependencies:
 * libudev
 * libevdev
 
-The project does not require an external installation of `showmethekey-cli`.
+The project does **not** require an external installation of `showmethekey-cli`.
 
 The ShowMeTheKey backend used by KDE KeyCast is included in the project and compiled from source. It is a modified version of ShowMeTheKey that adds support for detecting physical mouse wheel events.
 
@@ -67,7 +67,39 @@ Once installed, KDE KeyCast uses the corresponding runtime libraries for:
 * libudev
 * libevdev
 
-These libraries are normally provided by a modern Linux distribution running KDE/Plasma.
+These libraries are normally provided by a modern Linux distribution running KDE Plasma.
+
+### Input device permissions
+
+KDE KeyCast reads keyboard and mouse events from the Linux input devices under:
+
+```text
+/dev/input/event*
+```
+
+Depending on the distribution and its default permissions, the current user may need to belong to the `input` group.
+
+On systems where this is required:
+
+```bash
+sudo usermod -aG input $USER
+```
+
+After adding the user to the group, **log out and log in again**, or reboot the system.
+
+Verify that the group is active:
+
+```bash
+groups
+```
+
+The output should include:
+
+```text
+input
+```
+
+Without the required permissions, KDE KeyCast may start normally but will not display keyboard or mouse events.
 
 ### Optional KWin integration
 
@@ -98,7 +130,35 @@ cmake --install build --prefix "$(pwd)/build/test-install"
 
 The following package instructions apply to building KDE KeyCast from source.
 
-## Installing from CMake
+### Debian / Ubuntu / Kubuntu
+
+On Debian-based distributions such as Ubuntu and Kubuntu:
+
+```bash
+sudo apt update
+sudo apt install \
+    build-essential \
+    cmake \
+    extra-cmake-modules \
+    pkg-config \
+    qt6-base-dev \
+    libxkbcommon-dev \
+    libwayland-dev \
+    libinput-dev \
+    libudev-dev \
+    libevdev-dev
+```
+
+Then clone and build the project:
+
+```bash
+git clone https://github.com/hgmarcury/kde-keycast.git
+cd kde-keycast
+cmake -S . -B build
+cmake --build build -j$(nproc)
+```
+
+### Installing from CMake
 
 After building the project, KDE KeyCast can be installed into a chosen prefix:
 
@@ -106,7 +166,7 @@ After building the project, KDE KeyCast can be installed into a chosen prefix:
 cmake --install build --prefix "$HOME/.local"
 ```
 
-For a system-wide installation, use a suitable system prefix with the required privileges:
+For a system-wide installation:
 
 ```bash
 sudo cmake --install build --prefix /usr/local
@@ -120,6 +180,18 @@ It also installs the following helper scripts:
 * `uninstall-kde-keycast`
 
 KWin integration is optional and is not enabled automatically by the CMake installation.
+
+### Installing from a clean system
+
+After installing KDE KeyCast, make sure the current user has the required access to `/dev/input/event*` as described in [Input device permissions](#input-device-permissions).
+
+Then launch:
+
+```bash
+kde-keycast
+```
+
+KDE KeyCast should report the use of its bundled ShowMeTheKey backend in the terminal.
 
 ## Uninstalling
 
@@ -139,23 +211,15 @@ When installed into the user's local prefix:
 
 The uninstall script removes the installed KDE KeyCast files and KWin integration. User configuration is preserved.
 
+## Distribution-specific dependencies
+
 ### Debian / Ubuntu
 
-```bash
-sudo apt install \
-    build-essential \
-    cmake \
-    extra-cmake-modules \
-    pkg-config \
-    qt6-base-dev \
-    libxkbcommon-dev \
-    libwayland-dev \
-    libinput-dev \
-    libudev-dev \
-    libevdev-dev
-```
+The required packages are listed in the [Debian / Ubuntu / Kubuntu](#debian--ubuntu--kubuntu) section above.
 
 ### Fedora
+
+The following package names are expected on current Fedora KDE installations:
 
 ```bash
 sudo dnf install \
@@ -172,7 +236,13 @@ sudo dnf install \
     libevdev-devel
 ```
 
+**Fedora support has not yet been validated on a clean installation.**
+
+Package names may vary between Fedora releases.
+
 ### Arch Linux
+
+Expected packages on Arch Linux are:
 
 ```bash
 sudo pacman -S \
@@ -187,7 +257,18 @@ sudo pacman -S \
     libevdev
 ```
 
-Package names may vary between distribution releases and derivatives.
+**Arch Linux support has not yet been validated on a clean installation.**
+
+Package names may vary between Arch-based distributions.
+
+## Tested environments
+
+KDE KeyCast has currently been tested successfully on:
+
+* **KDE neon** — KDE Plasma on Wayland
+* **Kubuntu 26.04.1 LTS** — KDE Plasma 6.6.6 on Wayland
+
+Additional distributions will be added here as they are tested on clean installations.
 
 ## Optional KWin integration
 
@@ -262,6 +343,8 @@ vendor/showmethekey-cli/LICENSE
 The backend has been modified for KDE KeyCast, including support for physical mouse wheel events.
 
 Third-party libraries and components retain their respective licenses.
+
+See `THIRD-PARTY-NOTICES` for additional information.
 
 ## Copyright
 
