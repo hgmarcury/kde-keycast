@@ -1,7 +1,17 @@
 
-# KDE KeyCast
+<p align="center"> <picture> <source media="(prefers-color-scheme: dark)" srcset="resources/icons/keycast-light.svg"> <source media="(prefers-color-scheme: light)" srcset="resources/icons/keycast-dark.svg"> <img src="resources/icons/keycast-dark.svg" width="180" alt="KDE KeyCast"> </picture> </p>
 
-Visual keyboard and mouse indicator for Linux/KDE, designed especially for presentations, tutorials, and screencasts.
+<h1 align="center">KDE KeyCast</h1>
+
+<p align="center"> Visual keyboard and mouse indicator for Linux/KDE, designed especially for presentations, tutorials, and screencasts. </p>
+
+<p align="center">
+  <img src="resources/screenshots/kde-keycast-demo.gif" alt="KDE KeyCast demonstration" width="800">
+</p>
+
+<p align="center">
+  <img src="resources/screenshots/kde-keycast.png" alt="KDE KeyCast screenshot" width="800">
+</p>
 
 KDE KeyCast displays pressed keys and key combinations visually, using XKB to correctly interpret keyboard input according to the active keyboard layout.
 
