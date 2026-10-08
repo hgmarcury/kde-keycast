@@ -172,14 +172,16 @@ For a system-wide installation:
 sudo cmake --install build --prefix /usr/local
 ```
 
-The installation includes KDE KeyCast, the bundled ShowMeTheKey backend, the desktop entry, icons, metadata, and the KWin integration files.
+The installation includes KDE KeyCast, the bundled ShowMeTheKey backend, the desktop entry, icons, metadata, and the files required for optional KWin integration.
 
 It also installs the following helper scripts:
 
 * `install-kde-keycast`
 * `uninstall-kde-keycast`
+* `install-kwin-kde-keycast`
+* `uninstall-kwin-kde-keycast`
 
-KWin integration is optional and is not enabled automatically by the CMake installation.
+KWin integration is optional and is not installed or enabled automatically by the CMake installation. It can be installed later from KDE KeyCast or with the dedicated `install-kwin-kde-keycast` helper.
 
 ### Installing from a clean system
 
@@ -209,7 +211,31 @@ When installed into the user's local prefix:
 ~/.local/bin/uninstall-kde-keycast
 ```
 
-The uninstall script removes the installed KDE KeyCast files and KWin integration. User configuration is preserved.
+The `uninstall-kde-keycast` script removes the installed KDE KeyCast files and, as an exception, also removes the KDE KeyCast KWin integration if it is installed.
+
+The dedicated `uninstall-kwin-kde-keycast` helper removes only the KWin integration.
+
+User configuration is preserved.
+
+### AppImage
+
+An AppImage build is also available. It can install the KDE KeyCast desktop entry and application icons into the user's desktop environment:
+
+```bash
+./kde-keycast-x86_64.AppImage --install
+```
+
+KWin integration is optional and is not installed automatically.
+
+KWin integration can then be installed from the KDE KeyCast application, or manually using the bundled KWin installer.
+
+To remove the AppImage application integration:
+
+```bash
+./kde-keycast-x86_64.AppImage --uninstall
+```
+
+The AppImage uninstall operation also removes the KDE KeyCast KWin integration if it is installed.
 
 ## Distribution-specific dependencies
 
@@ -278,10 +304,16 @@ Without the required permissions, KDE KeyCast may start normally but will not di
 
 #### Optional KWin integration
 
-KWin integration can be installed with:
+KWin integration is optional and can be installed from the KDE KeyCast application or manually with:
 
 ```bash
-./packaging/install-kde-keycast.sh
+./packaging/install-kwin-kde-keycast.sh
+```
+
+To remove only the KWin integration:
+
+```bash
+./packaging/uninstall-kwin-kde-keycast.sh
 ```
 
 Fedora provides the Qt 6 D-Bus utility as `qdbus-qt6` rather than `qdbus6`. KDE KeyCast automatically detects either name.
@@ -315,6 +347,7 @@ KDE KeyCast has currently been tested successfully on:
 
 * **KDE neon** — KDE Plasma on Wayland
 * **Kubuntu 26.04.1 LTS** — KDE Plasma 6.6.6 on Wayland
+* **Fedora 44 KDE** — KDE Plasma 6.7.5 on Wayland
 
 Additional distributions will be added here as they are tested on clean installations.
 
