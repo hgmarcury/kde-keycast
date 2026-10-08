@@ -36,39 +36,43 @@ bool ShowMeTheKeyBackend::start(EventHandler handler)
 
     QString executable;
 
-    const QString projectBackend =
-        QDir(QCoreApplication::applicationDirPath())
+    const QString applicationDir =
+        QCoreApplication::applicationDirPath();
+
+    const QString developmentBackend =
+        QDir(applicationDir)
             .absoluteFilePath(
-                QStringLiteral(
-                    "showmethekey-cli"
-                )
+                QStringLiteral("showmethekey-cli")
             );
 
     const QString libexecDir =
         QStringLiteral(KDE_KEYCAST_LIBEXECDIR);
 
     const QString installedBackend =
-        QFileInfo(libexecDir).isAbsolute()
-            ? QDir(libexecDir).absoluteFilePath(
-                  QStringLiteral("kde-keycast/showmethekey-cli")
-              )
-            : QDir(QCoreApplication::applicationDirPath())
-                  .absoluteFilePath(
-                      QStringLiteral("../%1/kde-keycast/showmethekey-cli")
-                          .arg(libexecDir)
-                  );
+        QDir(applicationDir)
+            .absoluteFilePath(
+                QStringLiteral("../%1/kde-keycast/showmethekey-cli")
+                    .arg(libexecDir)
+            );
 
-    if (QFileInfo::exists(projectBackend) &&
-        QFileInfo(projectBackend).isExecutable()) {
+    const bool isDevelopmentBuild =
+        QFileInfo(applicationDir)
+            .fileName() == QStringLiteral("build");
 
-        executable = projectBackend;
+    if (isDevelopmentBuild &&
+        QFileInfo::exists(developmentBackend) &&
+        QFileInfo(developmentBackend).isExecutable()) {
+
+        executable = developmentBackend;
 
         qDebug()
             << "KDE KeyCast: usando backend de desarrollo:"
             << executable;
 
-    } else if (QFileInfo::exists(installedBackend) &&
-               QFileInfo(installedBackend).isExecutable()) {
+    } else if (
+        QFileInfo::exists(installedBackend) &&
+        QFileInfo(installedBackend).isExecutable()
+    ) {
 
         executable = installedBackend;
 
@@ -81,12 +85,13 @@ bool ShowMeTheKeyBackend::start(EventHandler handler)
         qCritical()
             << "KDE KeyCast: no se encontró el backend incluido."
             << "\nDesarrollo:"
-            << projectBackend
+            << developmentBackend
             << "\nInstalación:"
             << installedBackend;
 
         return false;
     }
+
     process_.setProgram(executable);
 
     connect(
