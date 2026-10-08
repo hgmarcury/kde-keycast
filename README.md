@@ -217,9 +217,12 @@ The uninstall script removes the installed KDE KeyCast files and KWin integratio
 
 The required packages are listed in the [Debian / Ubuntu / Kubuntu](#debian--ubuntu--kubuntu) section above.
 
+
 ### Fedora
 
-The following package names are expected on current Fedora KDE installations:
+KDE KeyCast has been tested successfully on **Fedora 44 KDE Plasma (Wayland)**.
+
+Install the required build dependencies:
 
 ```bash
 sudo dnf install \
@@ -236,7 +239,52 @@ sudo dnf install \
     libevdev-devel
 ```
 
-**Fedora support has not yet been validated on a clean installation.**
+Clone the repository and build KDE KeyCast:
+
+```bash
+git clone https://github.com/hgmarcury/kde-keycast.git
+cd kde-keycast
+cmake -S . -B build
+cmake --build build -j$(nproc)
+```
+
+Install it:
+
+```bash
+sudo cmake --install build
+```
+
+#### Input device permissions
+
+KDE KeyCast reads input events from `/dev/input/event*`.
+
+On Fedora, these devices are normally accessible to members of the `input` group. If your user is not already a member of this group, add it with:
+
+```bash
+sudo usermod -aG input $USER
+```
+
+Then log out and back in, or reboot.
+
+You can verify the group membership with:
+
+```bash
+groups
+```
+
+The `input` group should be listed.
+
+Without the required permissions, KDE KeyCast may start normally but will not display keyboard or mouse events.
+
+#### Optional KWin integration
+
+KWin integration can be installed with:
+
+```bash
+./packaging/install-kde-keycast.sh
+```
+
+Fedora provides the Qt 6 D-Bus utility as `qdbus-qt6` rather than `qdbus6`. KDE KeyCast automatically detects either name.
 
 Package names may vary between Fedora releases.
 

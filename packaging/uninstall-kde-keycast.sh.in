@@ -11,13 +11,28 @@ LIBEXECDIR="$PREFIX/@CMAKE_INSTALL_LIBEXECDIR@"
 
 echo "==> Uninstalling KDE KeyCast..."
 
-INSTALLER="$BINDIR/install-kde-keycast"
+USER_DATA_DIR=""
 
-if [[ -x "$INSTALLER" ]]; then
+if [[ -n "${SUDO_USER:-}" && "${SUDO_USER}" != "root" ]]; then
+    USER_HOME="$(getent passwd "$SUDO_USER" | cut -d: -f6)"
+    USER_DATA_DIR="${XDG_DATA_HOME:-$USER_HOME/.local/share}"
+elif [[ "$(id -u)" -ne 0 ]]; then
+    USER_DATA_DIR="${XDG_DATA_HOME:-$HOME/.local/share}"
+fi
+
+KWIN_UNINSTALLER="$BINDIR/uninstall-kwin-kde-keycast"
+
+if [[ -x "$KWIN_UNINSTALLER" ]]; then
     echo "==> Removing KDE KeyCast KWin integration..."
 
     if [[ -n "${SUDO_USER:-}" && "${SUDO_USER}" != "root" ]]; then
-        if ! sudo -u "$SUDO_USER" -H "$INSTALLER" --uninstall; then
+        USER_UID="$(id -u "$SUDO_USER")"
+        USER_RUNTIME_DIR="/run/user/$USER_UID"
+
+        if ! sudo -u "$SUDO_USER" \
+            DBUS_SESSION_BUS_ADDRESS="unix:path=$USER_RUNTIME_DIR/bus" \
+            XDG_RUNTIME_DIR="$USER_RUNTIME_DIR" \
+            "$KWIN_UNINSTALLER"; then
             echo "WARNING: Could not remove the KWin integration."
             echo "Continuing with KDE KeyCast file removal..."
         fi
@@ -25,18 +40,26 @@ if [[ -x "$INSTALLER" ]]; then
         echo "WARNING: Cannot determine the desktop user."
         echo "Skipping KWin integration removal."
     else
-        if ! "$INSTALLER" --uninstall; then
+        if ! "$KWIN_UNINSTALLER"; then
             echo "WARNING: Could not remove the KWin integration."
             echo "Continuing with KDE KeyCast file removal..."
         fi
     fi
 fi
 
+if [[ -n "$USER_DATA_DIR" ]]; then
+    echo "==> Removing KDE KeyCast user desktop integration..."
+
+    rm -f \
+        "$USER_DATA_DIR/applications/kde-keycast.desktop"
+fi
+
 echo "==> Removing KDE KeyCast files..."
 
 rm -f \
     "$BINDIR/kde-keycast" \
-    "$BINDIR/install-kde-keycast" \
+    "$BINDIR/install-kwin-kde-keycast" \
+    "$BINDIR/uninstall-kwin-kde-keycast" \
     "$BINDIR/uninstall-kde-keycast" \
     "$LIBEXECDIR/kde-keycast/showmethekey-cli" \
     "$DATADIR/applications/kde-keycast.desktop" \
@@ -45,7 +68,7 @@ rm -f \
     "$DATADIR/metainfo/com.github.hgmarcury.kde-keycast.metainfo.xml"
 
 rm -rf \
-    "$DATADIR/kwin/scripts/kde-keycast" \
-    "$LIBEXECDIR/kde-keycast"
+    "$LIBEXECDIR/kde-keycast" \
+    "$DATADIR/kde-keycast"
 
 echo "==> KDE KeyCast uninstalled."

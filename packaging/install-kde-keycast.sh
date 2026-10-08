@@ -2,132 +2,68 @@
 # SPDX-FileCopyrightText: 2026 Marc G.
 # SPDX-License-Identifier: GPL-3.0-or-later
 
-
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+APPDIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
 
-KPACKAGETOOL="$(command -v kpackagetool6 || true)"
-KWritECONFIG="$(command -v kwriteconfig6 || true)"
-QDBUS="$(command -v qdbus6 || command -v qdbus-qt6 || true)"
+USER_DATA_DIR="${XDG_DATA_HOME:-$HOME/.local/share}"
+APPLICATIONS_DIR="$USER_DATA_DIR/applications"
+ICONS_DIR="$USER_DATA_DIR/icons/hicolor/scalable/apps"
 
-if [[ -z "$KPACKAGETOOL" ]]; then
-    echo "ERROR: kpackagetool6 not found."
+APPIMAGE_PATH="${1:-}"
+
+if [[ -z "$APPIMAGE_PATH" ]]; then
+    echo "ERROR: AppImage path not specified."
     exit 1
 fi
 
-if [[ -z "$KWritECONFIG" ]]; then
-    echo "ERROR: kwriteconfig6 not found."
+APPIMAGE_PATH="$(readlink -f "$APPIMAGE_PATH")"
+
+if [[ ! -f "$APPIMAGE_PATH" ]]; then
+    echo "ERROR: AppImage not found:"
+    echo "  $APPIMAGE_PATH"
     exit 1
 fi
 
-if [[ -z "$QDBUS" ]]; then
-    echo "ERROR: qdbus6 or qdbus-qt6 not found."
+DESKTOP_TEMPLATE="$APPDIR/usr/share/applications/kde-keycast.desktop"
+
+if [[ ! -f "$DESKTOP_TEMPLATE" ]]; then
+    echo "ERROR: Desktop file not found:"
+    echo "  $DESKTOP_TEMPLATE"
     exit 1
 fi
 
-if [[ "${1:-}" == "--uninstall" ]]; then
-    echo "==> Uninstalling KDE KeyCast KWin integration..."
+LIGHT_ICON="$APPDIR/usr/share/icons/hicolor/scalable/apps/keycast-light.svg"
+DARK_ICON="$APPDIR/usr/share/icons/hicolor/scalable/apps/keycast-dark.svg"
 
-   USER_KWIN_PACKAGE="$HOME/.local/share/kwin/scripts/kde-keycast"
-
-   if [[ -d "$USER_KWIN_PACKAGE" ]]; then
-       echo "==> Disabling KDE KeyCast KWin script..."
-       "$KWritECONFIG" \
-           --file kwinrc \
-           --group Plugins \
-           --key kde-keycastEnabled \
-           --type bool \
-           false \
-           --notify
-
-       echo "==> Removing KDE KeyCast KWin script..."
-       "$KPACKAGETOOL" \
-           --type=KWin/Script \
-           --remove kde-keycast
-   else
-       echo "==> KDE KeyCast KWin script is not installed."
-   fi
-
-    echo "==> Reconfiguring KWin..."
-
-    "$QDBUS" \
-        org.kde.KWin \
-        /KWin \
-        org.kde.KWin.reconfigure
-
-    echo "==> KDE KeyCast KWin integration uninstalled."
-
-    exit 0
-fi
-
-echo "==> Installing KDE KeyCast KWin integration..."
-
-if [[ $# -ge 1 ]]; then
-    KWIN_PACKAGE="$1"
-else
-    INSTALLED_KWIN_PACKAGE="$SCRIPT_DIR/../share/kwin/scripts/kde-keycast"
-    SOURCE_KWIN_PACKAGE="$PROJECT_ROOT/kwin/kde-keycast"
-
-    if [[ -d "$INSTALLED_KWIN_PACKAGE" ]]; then
-        KWIN_PACKAGE="$INSTALLED_KWIN_PACKAGE"
-    elif [[ -d "$SOURCE_KWIN_PACKAGE" ]]; then
-        KWIN_PACKAGE="$SOURCE_KWIN_PACKAGE"
-    else
-        echo "ERROR: KDE KeyCast KWin package not found."
-        echo
-        echo "Searched:"
-        echo "  $INSTALLED_KWIN_PACKAGE"
-        echo "  $SOURCE_KWIN_PACKAGE"
-        exit 1
-    fi
-fi
-
-if [[ ! -d "$KWIN_PACKAGE" ]]; then
-    echo "ERROR: KWin package not found:"
-    echo "  $KWIN_PACKAGE"
+if [[ ! -f "$LIGHT_ICON" || ! -f "$DARK_ICON" ]]; then
+    echo "ERROR: KDE KeyCast icons not found."
     exit 1
 fi
 
-echo "KWin package:"
-echo "  $KWIN_PACKAGE"
+echo "==> Installing KDE KeyCast application integration..."
 
-if "$KPACKAGETOOL" \
-    --type=KWin/Script \
-    --show \
-    kde-keycast >/dev/null 2>&1
-then
-    echo "==> KDE KeyCast KWin script already installed. Updating..."
+mkdir -p \
+    "$APPLICATIONS_DIR" \
+    "$ICONS_DIR"
 
-    "$KPACKAGETOOL" \
-        --type=KWin/Script \
-        --upgrade \
-        "$KWIN_PACKAGE"
-else
-    echo "==> KDE KeyCast KWin script not installed. Installing..."
+sed \
+    "s|^Exec=.*|Exec=$APPIMAGE_PATH|" \
+    "$DESKTOP_TEMPLATE" \
+    > "$APPLICATIONS_DIR/kde-keycast.desktop"
 
-    "$KPACKAGETOOL" \
-        --type=KWin/Script \
-        --install \
-        "$KWIN_PACKAGE"
-fi
+chmod 0644 \
+    "$APPLICATIONS_DIR/kde-keycast.desktop"
 
-echo "==> Enabling KDE KeyCast KWin script..."
+install \
+    -m 0644 \
+    "$LIGHT_ICON" \
+    "$ICONS_DIR/keycast-light.svg"
 
-"$KWritECONFIG" \
-    --file kwinrc \
-    --group Plugins \
-    --key kde-keycastEnabled \
-    --type bool \
-    true \
-    --notify
+install \
+    -m 0644 \
+    "$DARK_ICON" \
+    "$ICONS_DIR/keycast-dark.svg"
 
-echo "==> Reconfiguring KWin..."
-
-"$QDBUS" \
-    org.kde.KWin \
-    /KWin \
-    org.kde.KWin.reconfigure
-
-echo "==> KDE KeyCast KWin integration installed."
+echo "==> KDE KeyCast application integration installed."

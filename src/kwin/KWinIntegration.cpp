@@ -13,61 +13,57 @@
 
 namespace {
 
-QString findInstaller()
-{
-    const QString applicationDir =
-        QCoreApplication::applicationDirPath();
+    QString findKWinInstaller()
+    {
+        const QString applicationDir =
+            QCoreApplication::applicationDirPath();
 
-    const QString installedInstaller =
-        QDir(applicationDir)
-            .absoluteFilePath(
-                QStringLiteral("install-kde-keycast")
-            );
+        const QString installedInstaller =
+            QDir(applicationDir)
+                .absoluteFilePath(
+                    QStringLiteral("install-kwin-kde-keycast")
+                );
 
-    if (QFileInfo(installedInstaller).isExecutable())
-        return installedInstaller;
+        if (QFileInfo(installedInstaller).isExecutable())
+            return installedInstaller;
 
-    const QString developmentInstaller =
-        QDir(applicationDir)
-            .absoluteFilePath(
-                QStringLiteral("../packaging/install-kde-keycast.sh")
-            );
+        const QString developmentInstaller =
+            QDir(applicationDir)
+                .absoluteFilePath(
+                    QStringLiteral("../packaging/install-kwin-kde-keycast.sh")
+                );
 
-    if (QFileInfo(developmentInstaller).isExecutable())
-        return developmentInstaller;
+        if (QFileInfo(developmentInstaller).isExecutable())
+            return developmentInstaller;
 
-    return {};
-}
-
-QString findKWinPackage(const QString &installer)
-{
-    const QString applicationDir =
-        QCoreApplication::applicationDirPath();
-
-    const QString developmentPackage =
-        QDir(applicationDir)
-            .absoluteFilePath(
-                QStringLiteral("../kwin/kde-keycast")
-            );
-
-    if (QFileInfo(developmentPackage).isDir() &&
-        QFileInfo(installer).fileName() ==
-            QStringLiteral("install-kde-keycast.sh")) {
-
-        return developmentPackage;
+        return {};
     }
 
-    const QString installedPackage =
-        QDir(applicationDir)
-            .absoluteFilePath(
-                QStringLiteral("../share/kwin/scripts/kde-keycast")
-            );
+    QString findKWinUninstaller()
+    {
+        const QString applicationDir =
+            QCoreApplication::applicationDirPath();
 
-    if (QFileInfo(installedPackage).isDir())
-        return installedPackage;
+        const QString installedUninstaller =
+            QDir(applicationDir)
+                .absoluteFilePath(
+                    QStringLiteral("uninstall-kwin-kde-keycast")
+                );
 
-    return {};
-}
+        if (QFileInfo(installedUninstaller).isExecutable())
+            return installedUninstaller;
+
+        const QString developmentUninstaller =
+            QDir(applicationDir)
+                .absoluteFilePath(
+                    QStringLiteral("../packaging/uninstall-kwin-kde-keycast.sh")
+                );
+
+        if (QFileInfo(developmentUninstaller).isExecutable())
+            return developmentUninstaller;
+
+        return {};
+    }
 
 QString findQdbus()
 {
@@ -151,25 +147,14 @@ bool KWinIntegration::isEnabled()
 
 bool KWinIntegration::install(QString *errorMessage)
 {
-    const QString installer = findInstaller();
+    const QString installer = findKWinInstaller();
 
     if (installer.isEmpty())
         return false;
 
-    const QString kwinPackage =
-        findKWinPackage(installer);
-
     QProcess process;
 
-    if (kwinPackage.isEmpty()) {
-        process.start(installer);
-    } else {
-        process.start(
-            installer,
-            {kwinPackage}
-        );
-    }
-
+    process.start(installer);
     if (!process.waitForFinished(30000)) {
         if (errorMessage) {
             *errorMessage =
@@ -320,17 +305,13 @@ bool KWinIntegration::disable()
 
 bool KWinIntegration::uninstall()
 {
-    const QString installer = findInstaller();
+    const QString uninstaller = findKWinUninstaller();
 
-    if (installer.isEmpty())
+    if (uninstaller.isEmpty())
         return false;
-
     QProcess process;
 
-    process.start(
-        installer,
-        {QStringLiteral("--uninstall")}
-    );
+    process.start(uninstaller);
 
     if (!process.waitForFinished(30000))
         return false;

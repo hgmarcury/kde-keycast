@@ -136,20 +136,20 @@ done
 if [[ "${1:-}" == "--uninstall" ]]; then
     USER_DATA_DIR="${XDG_DATA_HOME:-$HOME/.local/share}"
 
-    INSTALLER="$APPDIR/usr/bin/install-kde-keycast"
+    KWIN_UNINSTALLER="$APPDIR/usr/bin/uninstall-kwin-kde-keycast"
 
     echo "==> Uninstalling KDE KeyCast AppImage..."
 
-    if [[ -x "$INSTALLER" ]]; then
+    if [[ -x "$KWIN_UNINSTALLER" ]]; then
         echo "==> Removing KDE KeyCast KWin integration..."
 
-        if ! "$INSTALLER" --uninstall; then
+        if ! "$KWIN_UNINSTALLER"; then
             echo "WARNING: Could not remove the KWin integration."
             echo "Continuing with KDE KeyCast file removal..."
         fi
     fi
 
-    echo "==> Removing KDE KeyCast user files..."
+    echo "==> Removing KDE KeyCast application integration..."
 
     rm -f \
         "$USER_DATA_DIR/applications/kde-keycast.desktop" \
@@ -161,12 +161,6 @@ if [[ "${1:-}" == "--uninstall" ]]; then
 fi
 
 if [[ "${1:-}" == "--install" ]]; then
-    USER_DATA_DIR="${XDG_DATA_HOME:-$HOME/.local/share}"
-
-    mkdir -p \
-        "$USER_DATA_DIR/applications" \
-        "$USER_DATA_DIR/icons/hicolor/scalable/apps"
-
     APPIMAGE_PATH="${APPIMAGE:-}"
 
     if [[ -z "$APPIMAGE_PATH" ]]; then
@@ -176,27 +170,8 @@ if [[ "${1:-}" == "--install" ]]; then
 
     APPIMAGE_PATH="$(readlink -f "$APPIMAGE_PATH")"
 
-    DESKTOP_FILE="$USER_DATA_DIR/applications/kde-keycast.desktop"
-
-    sed \
-        "s|^Exec=.*|Exec=$APPIMAGE_PATH|" \
-        "$APPDIR/com.github.hgmarcury.kde-keycast.desktop" \
-        > "$DESKTOP_FILE"
-
-    chmod 0644 "$DESKTOP_FILE"
-
-    install \
-        -m 0644 \
-        "$APPDIR/usr/share/icons/hicolor/scalable/apps/keycast-light.svg" \
-        "$USER_DATA_DIR/icons/hicolor/scalable/apps/keycast-light.svg"
-
-    install \
-        -m 0644 \
-        "$APPDIR/usr/share/icons/hicolor/scalable/apps/keycast-dark.svg" \
-        "$USER_DATA_DIR/icons/hicolor/scalable/apps/keycast-dark.svg"
-
     exec "$APPDIR/usr/bin/install-kde-keycast" \
-        "$APPDIR/usr/share/kwin/scripts/kde-keycast"
+        "$APPIMAGE_PATH"
 fi
 
 exec "$APPDIR/usr/bin/kde-keycast" "$@"

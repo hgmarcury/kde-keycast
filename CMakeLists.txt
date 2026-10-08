@@ -179,11 +179,27 @@ install(
 
 install(
     PROGRAMS
-        ${CMAKE_CURRENT_SOURCE_DIR}/packaging/install-kde-keycast.sh
+        ${CMAKE_CURRENT_SOURCE_DIR}/packaging/install-kwin-kde-keycast.sh
     DESTINATION
         ${CMAKE_INSTALL_BINDIR}
     RENAME
-        install-kde-keycast
+        install-kwin-kde-keycast
+)
+
+install(
+    PROGRAMS
+        ${CMAKE_CURRENT_SOURCE_DIR}/packaging/uninstall-kwin-kde-keycast.sh
+    DESTINATION
+        ${CMAKE_INSTALL_BINDIR}
+    RENAME
+        uninstall-kwin-kde-keycast
+)
+
+install(
+    DIRECTORY
+        ${CMAKE_CURRENT_SOURCE_DIR}/kwin/kde-keycast
+    DESTINATION
+        ${CMAKE_INSTALL_DATAROOTDIR}/kde-keycast/kwin
 )
 
 install(
@@ -201,11 +217,6 @@ install(
 install(
     FILES kde-keycast.desktop
     DESTINATION ${CMAKE_INSTALL_DATAROOTDIR}/applications
-)
-
-install(
-    DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/kwin/kde-keycast/
-    DESTINATION ${CMAKE_INSTALL_DATAROOTDIR}/kwin/scripts/kde-keycast
 )
 
 install(
