@@ -154,6 +154,7 @@ bool KWinIntegration::install(QString *errorMessage)
 
     QProcess process;
 
+    process.setWorkingDirectory(QStringLiteral("/tmp"));
     process.start(installer);
     if (!process.waitForFinished(30000)) {
         if (errorMessage) {
@@ -311,6 +312,7 @@ bool KWinIntegration::uninstall()
         return false;
     QProcess process;
 
+    process.setWorkingDirectory(QStringLiteral("/tmp"));
     process.start(uninstaller);
 
     if (!process.waitForFinished(30000))
