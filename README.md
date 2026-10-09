@@ -320,9 +320,12 @@ Fedora provides the Qt 6 D-Bus utility as `qdbus-qt6` rather than `qdbus6`. KDE 
 
 Package names may vary between Fedora releases.
 
-### Arch Linux
 
-Expected packages on Arch Linux are:
+### Arch Linux and EndeavourOS
+
+KDE KeyCast has been tested successfully on **EndeavourOS KDE Plasma (Wayland)**, an Arch Linux-based distribution.
+
+Expected packages on Arch Linux and EndeavourOS are:
 
 ```bash
 sudo pacman -S \
@@ -337,9 +340,22 @@ sudo pacman -S \
     libevdev
 ```
 
-**Arch Linux support has not yet been validated on a clean installation.**
+Clone the repository and build KDE KeyCast:
 
-Package names may vary between Arch-based distributions.
+```bash
+git clone https://github.com/hgmarcury/kde-keycast.git
+cd kde-keycast
+cmake -S . -B build
+cmake --build build -j$(nproc)
+```
+
+Install it:
+
+```bash
+sudo cmake --install build
+```
+
+**Arch Linux itself has not yet been tested on a clean installation.** Package names and system configuration may vary between Arch-based distributions.
 
 ## Tested environments
 
@@ -348,6 +364,7 @@ KDE KeyCast has currently been tested successfully on:
 * **KDE neon** — KDE Plasma on Wayland
 * **Kubuntu 26.04.1 LTS** — KDE Plasma 6.6.6 on Wayland
 * **Fedora 44 KDE** — KDE Plasma 6.7.5 on Wayland
+* **EndeavourOS KDE** — KDE Plasma on Wayland
 
 Additional distributions will be added here as they are tested on clean installations.
 
