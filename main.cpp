@@ -5578,6 +5578,7 @@ void KeyCast::contextMenuEvent(
 int main(int argc, char **argv)
 {
     QApplication app(argc, argv);
+    app.setQuitOnLastWindowClosed(false);
 
     app.setApplicationName(
         QStringLiteral("kde-keycast")
