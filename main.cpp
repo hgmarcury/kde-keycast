@@ -485,6 +485,26 @@ protected:
         p.setRenderHint(QPainter::Antialiasing);
         p.setRenderHint(QPainter::TextAntialiasing);
 
+
+        // Fondo semitransparente del panel flotante.
+
+         const QColor panelBackground =
+            lightMode
+            ? QColor(248, 249, 251, 145)
+            : QColor(30, 32, 38, 145);
+
+        const QColor panelBorder =
+            lightMode
+                ? QColor(0, 0, 0, 55)
+                : QColor(255, 255, 255, 45);
+
+        const QRectF panelRect =
+            QRectF(rect()).adjusted(0.5, 0.5, -0.5, -0.5);
+
+            p.setPen(QPen(panelBorder, 1.0));
+            p.setBrush(panelBackground);
+            p.drawRoundedRect(panelRect, 16.0, 16.0);
+
         trimVisualQueue();
 
         paintCloseButton(p);
