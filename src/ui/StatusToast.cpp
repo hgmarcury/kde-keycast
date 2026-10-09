@@ -734,4 +734,22 @@ void StatusToast::showFailed(
         0.78
     );
 }
+
+void StatusToast::showInputError(
+    QWidget *parent,
+    const QString &error
+)
+{
+    showToast(
+        parent,
+        QStringLiteral(
+            "Keyboard and mouse input unavailable\n%1"
+        ).arg(error),
+        ToastOperation::Independent,
+        4000,
+        0,
+        200,
+        0.78
+    );
+}
 } // namespace KDEKeyCast

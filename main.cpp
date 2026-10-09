@@ -238,6 +238,17 @@ public:
 
         setupWaylandKeyboard();
 
+        connect(
+            &showMeTheKeyBackend,
+            &KDEKeyCast::ShowMeTheKeyBackend::backendError,
+            this,
+            [this](const QString &message) {
+                KDEKeyCast::StatusToast::showInputError(
+                    this,
+                    message
+                );
+            }
+        );
 
         showMeTheKeyBackend.start(
             [this](const KDEKeyCast::InputEvent &event) {

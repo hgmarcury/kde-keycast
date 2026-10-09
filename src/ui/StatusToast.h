@@ -25,6 +25,10 @@ public:
     static void showUninstalled(QWidget *parent);
 
     static void showFailed(QWidget *parent, const QString &error);
+    static void showInputError(
+        QWidget *parent,
+        const QString &error
+    );
 };
 
 } // namespace KDEKeyCast
