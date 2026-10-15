@@ -11,7 +11,50 @@
 #include <QDebug>
 #include <QStandardPaths>
 
+#include <grp.h>
+#include <unistd.h>
+#include <algorithm>
+#include <vector>
+
 namespace KDEKeyCast {
+
+    namespace {
+
+    bool hasInputGroup()
+    {
+        const struct group *inputGroup = getgrnam("input");
+
+        if (!inputGroup)
+            return false;
+
+        const gid_t inputGid = inputGroup->gr_gid;
+
+        if (getegid() == inputGid)
+            return true;
+
+        const int count = getgroups(0, nullptr);
+
+        if (count <= 0)
+            return false;
+
+        std::vector<gid_t> groups(count);
+
+        const int actualCount = getgroups(
+            static_cast<int>(groups.size()),
+            groups.data()
+        );
+
+        if (actualCount < 0)
+            return false;
+
+        return std::find(
+            groups.begin(),
+            groups.begin() + actualCount,
+            inputGid
+        ) != groups.begin() + actualCount;
+    }
+
+    } // namespace
 
 ShowMeTheKeyBackend::ShowMeTheKeyBackend()
     : QObject(nullptr)
@@ -58,7 +101,7 @@ bool ShowMeTheKeyBackend::start(EventHandler handler)
         && QFileInfo(developmentBackend).isExecutable()) {
         backend = developmentBackend;
     } else if (QFileInfo(installedBackend).isExecutable()) {
-        backend = installedBackend;
+        backend = QFileInfo(installedBackend).canonicalFilePath();
     } else {
         const QString error =
             QStringLiteral("No se encontró el backend incluido.");
@@ -67,24 +110,34 @@ bool ShowMeTheKeyBackend::start(EventHandler handler)
         return false;
     }
 
-    const QString pkexec =
-        QStandardPaths::findExecutable(
+    QString program;
+    QStringList arguments;
+
+    if (hasInputGroup()) {
+        program = backend;
+        qInfo() << "KDE KeyCast: ejecutando el backend incluido"
+                   " directamente (grupo input).";
+    } else {
+        program = QStandardPaths::findExecutable(
             QStringLiteral("pkexec")
         );
 
-    if (pkexec.isEmpty()) {
-        const QString error =
-            QStringLiteral(
-                "No se encontró pkexec. Comprueba que Polkit "
-                "esté instalado y disponible en el sistema."
-            );
-        qWarning() << "KDE KeyCast:" << error;
-        emit backendError(error);
-        return false;
+        if (program.isEmpty()) {
+            const QString error =
+                QStringLiteral(
+                    "No se encontró pkexec. Comprueba que Polkit "
+                    "esté instalado y disponible en el sistema."
+                );
+            qWarning() << "KDE KeyCast:" << error;
+            emit backendError(error);
+            return false;
+        }
+
+        arguments.append(backend);
     }
 
-    process_.setProgram(pkexec);
-    process_.setArguments({backend});
+    process_.setProgram(program);
+    process_.setArguments(arguments);
     process_.setProcessChannelMode(QProcess::SeparateChannels);
 
     connect(
@@ -108,8 +161,7 @@ bool ShowMeTheKeyBackend::start(EventHandler handler)
                     << "KDE KeyCast backend:"
                     << QString::fromLocal8Bit(output).trimmed();
             }
-        },
-        Qt::UniqueConnection
+        }
     );
 
     connect(

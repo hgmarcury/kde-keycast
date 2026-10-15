@@ -1,0 +1,161 @@
+#!/usr/bin/env bash
+# SPDX-FileCopyrightText: 2026 Marc G.
+# SPDX-License-Identifier: GPL-3.0-or-later
+
+set -Eeuo pipefail
+
+RULE_SOURCE="@KDE_INSTALL_FULL_DATADIR@/kde-keycast/polkit/10-com.github.hgmarcury.kde-keycast.rules"
+RULE_DEST="/etc/polkit-1/rules.d/50-com.github.hgmarcury.kde-keycast.rules"
+GROUP_NAME="kde-keycast"
+STATE_DIR="/var/lib/kde-keycast/permissions"
+MEMBERS_FILE="$STATE_DIR/members"
+
+if [[ "${1:-}" == "--apply" ]]; then
+    [[ "$(id -u)" -eq 0 ]] || {
+        echo "ERROR: Se necesitan privilegios de administrador."
+        exit 1
+    }
+
+    # Eliminar únicamente la regla registrada y que siga siendo idéntica.
+    if [[ -f "$STATE_DIR/rule-installed" ]]; then
+        if [[ ! -e "$RULE_DEST" ]]; then
+            rm -f -- "$STATE_DIR/rule-installed"
+        elif cmp -s "$RULE_SOURCE" "$RULE_DEST"; then
+            if rm -- "$RULE_DEST"; then
+                if rm -f -- "$STATE_DIR/rule-installed"; then
+                    echo "Regla de Polkit eliminada."
+                else
+                    echo "AVISO: La regla se eliminó, pero no se pudo retirar su registro."
+                fi
+            else
+                echo "AVISO: No se pudo eliminar la regla de Polkit:"
+                echo "  $RULE_DEST"
+                echo "Se conserva el registro para poder reintentarlo."
+            fi
+        else
+            echo "ERROR: La regla ha cambiado; se conserva por seguridad:"
+            echo "  $RULE_DEST"
+            echo "No se ha modificado ningún otro permiso."
+            exit 1
+        fi
+    else
+        echo "No consta que KDE KeyCast instalara la regla."
+    fi
+
+    # Procesar cada usuario y conservar los que no se hayan podido retirar.
+    if [[ -f "$MEMBERS_FILE" ]]; then
+        REMAINING_FILE="$(mktemp "$STATE_DIR/members.XXXXXX")"
+        chmod 0600 "$REMAINING_FILE"
+
+        while IFS= read -r user; do
+            [[ -n "$user" ]] || continue
+
+            if ! id "$user" >/dev/null 2>&1; then
+                echo "AVISO: El usuario '$user' ya no existe."
+                continue
+            fi
+
+            if ! getent group "$GROUP_NAME" >/dev/null; then
+                echo "AVISO: El grupo '$GROUP_NAME' no existe."
+                echo "Se conserva el registro de '$user' para revisión."
+                printf '%s\n' "$user" >> "$REMAINING_FILE"
+                continue
+            fi
+
+            if ! id -nG "$user" | tr ' ' '\n' | grep -Fxq "$GROUP_NAME"; then
+                continue
+            fi
+
+            if gpasswd -d "$user" "$GROUP_NAME"; then
+                echo "Se ha retirado '$user' del grupo."
+            else
+                echo "AVISO: No se pudo retirar '$user'; se conserva el registro."
+                printf '%s\n' "$user" >> "$REMAINING_FILE"
+            fi
+        done < "$MEMBERS_FILE"
+
+        if [[ -s "$REMAINING_FILE" ]]; then
+            mv -- "$REMAINING_FILE" "$MEMBERS_FILE"
+        else
+            rm -f -- "$REMAINING_FILE" "$MEMBERS_FILE"
+        fi
+    fi
+
+    # Eliminar el grupo solo si lo creó KDE KeyCast y está vacío.
+    if [[ -f "$STATE_DIR/group-created" ]]; then
+        if ! getent group "$GROUP_NAME" >/dev/null; then
+            if [[ ! -s "$MEMBERS_FILE" ]]; then
+                rm -f -- "$STATE_DIR/group-created"
+            else
+                echo "AVISO: El grupo no existe, pero quedan usuarios registrados."
+                echo "Se conserva el registro del grupo para revisión."
+            fi
+        else
+            GROUP_GID="$(getent group "$GROUP_NAME" | cut -d: -f3)"
+
+            if [[ -z "$(getent group "$GROUP_NAME" | cut -d: -f4)" ]] &&
+               ! getent passwd | awk -F: -v gid="$GROUP_GID" '$4 == gid { found=1 } END { exit !found }'; then
+                if groupdel "$GROUP_NAME"; then
+                    rm -f -- "$STATE_DIR/group-created"
+                    echo "Grupo $GROUP_NAME eliminado."
+                else
+                    echo "AVISO: No se pudo eliminar el grupo; se conserva su registro."
+                fi
+            else
+                echo "El grupo se conserva porque aún tiene miembros"
+                echo "o es el grupo principal de algún usuario."
+            fi
+        fi
+    fi
+
+    # Borrar los registros solo cuando ya no quede trabajo pendiente.
+    if [[ -d "$STATE_DIR" ]] &&
+       [[ -z "$(find "$STATE_DIR" -mindepth 1 -maxdepth 1 -print -quit)" ]]; then
+        rmdir -- "$STATE_DIR"
+        rmdir -- "$(dirname "$STATE_DIR")" 2>/dev/null || true
+    fi
+
+    PENDING=0
+
+    if [[ -e "$RULE_DEST" ]]; then
+        echo "PENDIENTE: La regla de Polkit sigue presente: $RULE_DEST"
+        PENDING=1
+    fi
+
+    if [[ -d "$STATE_DIR" ]] &&
+       [[ -n "$(find "$STATE_DIR" -mindepth 1 -maxdepth 1 -print -quit)" ]]; then
+        echo "PENDIENTE: Quedan registros en $STATE_DIR"
+        PENDING=1
+    fi
+
+    if (( PENDING )); then
+        echo "La retirada no se ha completado; revisa los avisos anteriores."
+        exit 1
+    fi
+
+    echo "Permisos registrados de KDE KeyCast retirados."
+    exit 0
+fi
+
+if [[ "$(id -u)" -eq 0 ]]; then
+    echo "Ejecuta este script desde la sesión del usuario, no como root."
+    exit 1
+fi
+
+echo "Se retirarán los permisos sin autenticación de KDE KeyCast."
+echo "Se intentará quitar únicamente las pertenencias registradas"
+echo "por su instalador y la regla que instaló originalmente."
+echo "Las reglas modificadas y las pertenencias previas se conservarán."
+echo
+
+read -r -p "¿Quieres continuar? [s/N] " answer
+
+case "$answer" in
+    s|S|si|SI|Si|sí|Sí|sÍ)
+        exec sudo bash "$0" --apply
+        ;;
+    *)
+        echo "No se han modificado los permisos."
+        exit 0
+        ;;
+esac

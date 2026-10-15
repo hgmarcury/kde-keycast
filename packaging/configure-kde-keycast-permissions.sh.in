@@ -1,0 +1,214 @@
+#!/usr/bin/env bash
+# SPDX-FileCopyrightText: 2026 Marc G.
+# SPDX-License-Identifier: GPL-3.0-or-later
+
+set -Eeuo pipefail
+
+RULE_SOURCE="@KDE_INSTALL_FULL_DATADIR@/kde-keycast/polkit/10-com.github.hgmarcury.kde-keycast.rules"
+RULE_DEST="/etc/polkit-1/rules.d/50-com.github.hgmarcury.kde-keycast.rules"
+GROUP_NAME="kde-keycast"
+STATE_DIR="/var/lib/kde-keycast/permissions"
+MEMBERS_FILE="$STATE_DIR/members"
+
+if [[ "${1:-}" == "--apply" ]]; then
+    [[ "$(id -u)" -eq 0 ]] || {
+        echo "ERROR: Se necesitan privilegios de administrador."
+        exit 1
+    }
+
+    TARGET_USER="${2:-}"
+    [[ -n "$TARGET_USER" ]] && id "$TARGET_USER" >/dev/null 2>&1 || {
+        echo "ERROR: Usuario de destino no válido."
+        exit 1
+    }
+
+    [[ -f "$RULE_SOURCE" ]] || {
+        echo "ERROR: No se encuentra la regla: $RULE_SOURCE"
+        exit 1
+    }
+
+    if [[ -e "$RULE_DEST" ]] && ! cmp -s "$RULE_SOURCE" "$RULE_DEST"; then
+        echo "ERROR: Ya existe una regla distinta en $RULE_DEST"
+        echo "No se ha sobrescrito."
+        exit 1
+    fi
+
+    validate_state_dir() {
+        local path="$1"
+        local expected_mode="$2"
+
+        if [[ -e "$path" || -L "$path" ]]; then
+            [[ -d "$path" && ! -L "$path" ]] || {
+                echo "ERROR: $path no es un directorio válido."
+                exit 1
+            }
+
+            [[ "$(stat -c '%u:%a' -- "$path")" == "0:$expected_mode" ]] || {
+                echo "ERROR: Propietario o permisos inesperados en $path."
+                echo "Se esperaba root:$expected_mode. No se ha modificado ningún permiso."
+                exit 1
+            }
+        fi
+    }
+
+    validate_state_dir /var/lib/kde-keycast 755
+    validate_state_dir "$STATE_DIR" 700
+
+    if getent group "$GROUP_NAME" >/dev/null; then
+        [[ -f "$STATE_DIR/group-created" ]] || {
+            echo "ERROR: El grupo '$GROUP_NAME' ya existe y no consta que lo creara KDE KeyCast."
+            echo "No se ha modificado ningún permiso."
+            exit 1
+        }
+    elif [[ -e "$STATE_DIR/group-created" ]]; then
+        echo "ERROR: Existe un registro de propiedad, pero el grupo '$GROUP_NAME' no existe."
+        echo "Revisa $STATE_DIR antes de continuar."
+        exit 1
+    fi
+
+    install -d -o root -g root -m 0755 /var/lib/kde-keycast
+    install -d -o root -g root -m 0700 "$STATE_DIR"
+
+    GROUP_CREATED_NOW=0
+    USER_ADDED_NOW=0
+    MEMBER_RECORDED_NOW=0
+    RULE_INSTALLED_NOW=0
+    RULE_TMP=""
+    GROUP_MARKER_EXISTED=0
+    RULE_MARKER_EXISTED=0
+    if [[ -e "$STATE_DIR/group-created" ]]; then GROUP_MARKER_EXISTED=1; fi
+    if [[ -e "$STATE_DIR/rule-installed" ]]; then RULE_MARKER_EXISTED=1; fi
+
+    rollback() {
+        local rc=$?
+        local cleanup_failed=0
+        local member_cleanup_failed=0
+
+        trap - ERR
+        set +e
+
+        if [[ -n "$RULE_TMP" && -e "$RULE_TMP" ]]; then
+            if ! rm -f -- "$RULE_TMP"; then
+                echo "AVISO: No se pudo retirar el archivo temporal."
+                cleanup_failed=1
+            fi
+        fi
+
+        if (( RULE_INSTALLED_NOW )); then
+            if ! rm -f -- "$RULE_DEST"; then
+                echo "AVISO: No se pudo retirar la regla $RULE_DEST"
+                cleanup_failed=1
+            elif (( ! RULE_MARKER_EXISTED )); then
+                if ! rm -f -- "$STATE_DIR/rule-installed"; then
+                    echo "AVISO: No se pudo retirar el registro de la regla."
+                    cleanup_failed=1
+                fi
+            fi
+        fi
+
+        if (( USER_ADDED_NOW )); then
+            if ! gpasswd -d "$TARGET_USER" "$GROUP_NAME" >/dev/null 2>&1; then
+                echo "AVISO: No se pudo retirar '$TARGET_USER' del grupo."
+                cleanup_failed=1
+                member_cleanup_failed=1
+            fi
+        fi
+
+        if (( MEMBER_RECORDED_NOW )) && (( ! member_cleanup_failed )); then
+            if ! sed -i "\|^${TARGET_USER}$|d" "$MEMBERS_FILE"; then
+                echo "AVISO: No se pudo actualizar el registro de usuarios."
+                cleanup_failed=1
+            fi
+        fi
+
+        if (( GROUP_CREATED_NOW )); then
+            if ! groupdel "$GROUP_NAME" >/dev/null 2>&1; then
+                echo "AVISO: No se pudo eliminar el grupo $GROUP_NAME."
+                cleanup_failed=1
+            elif (( ! GROUP_MARKER_EXISTED )); then
+                if ! rm -f -- "$STATE_DIR/group-created"; then
+                    echo "AVISO: No se pudo retirar el registro del grupo."
+                    cleanup_failed=1
+                fi
+            fi
+        fi
+
+        if (( cleanup_failed )); then
+            echo "ERROR: Falló la configuración y la reversión quedó incompleta."
+            echo "Revisa los avisos anteriores antes de volver a intentarlo."
+        else
+            echo "ERROR: Falló la configuración; se revirtieron los cambios posibles."
+        fi
+
+        exit "$rc"
+    }
+    trap rollback ERR
+
+    if ! getent group "$GROUP_NAME" >/dev/null; then
+        groupadd "$GROUP_NAME"
+        GROUP_CREATED_NOW=1
+        touch "$STATE_DIR/group-created"
+        chmod 0600 "$STATE_DIR/group-created"
+    fi
+
+    if ! id -nG "$TARGET_USER" | tr ' ' '\n' | grep -Fxq "$GROUP_NAME"; then
+        usermod -aG "$GROUP_NAME" "$TARGET_USER"
+        USER_ADDED_NOW=1
+
+        touch "$MEMBERS_FILE"
+        chmod 0600 "$MEMBERS_FILE"
+
+        if ! grep -Fxq "$TARGET_USER" "$MEMBERS_FILE"; then
+            printf '%s\n' "$TARGET_USER" >> "$MEMBERS_FILE"
+            MEMBER_RECORDED_NOW=1
+        fi
+        echo "Usuario añadido al grupo $GROUP_NAME."
+    else
+        echo "El usuario ya pertenece al grupo $GROUP_NAME."
+    fi
+
+    if [[ ! -e "$RULE_DEST" ]]; then
+        RULE_TMP="$(mktemp "${RULE_DEST}.tmp.XXXXXX")"
+        install -o root -g root -m 0644 "$RULE_SOURCE" "$RULE_TMP"
+        ln -- "$RULE_TMP" "$RULE_DEST"
+        RULE_INSTALLED_NOW=1
+        rm -- "$RULE_TMP"
+        RULE_TMP=""
+        touch "$STATE_DIR/rule-installed"
+        chmod 0600 "$STATE_DIR/rule-installed"
+    else
+        echo "La regla ya existe y coincide con la de KDE KeyCast."
+    fi
+
+    trap - ERR
+    echo "Permisos de KDE KeyCast configurados."
+    echo "Cierra la sesión y vuelve a entrar para aplicar el nuevo grupo."
+    exit 0
+fi
+
+if [[ "$(id -u)" -eq 0 ]]; then
+    echo "Ejecuta este script desde la sesión del usuario, no como root."
+    exit 1
+fi
+
+TARGET_USER="$(id -un)"
+
+echo "KDE KeyCast necesita permiso para leer eventos de teclado y ratón."
+echo "Se autorizará al grupo '$GROUP_NAME' a ejecutar su backend"
+echo "sin autenticación repetida. Es un permiso sensible."
+echo
+echo "Usuario: $TARGET_USER"
+echo "Solo se autoriza la acción específica en sesiones locales activas."
+echo
+
+read -r -p "¿Quieres configurar estos permisos? [s/N] " answer
+
+case "$answer" in
+    s|S|si|SI|Si|sí|Sí|sÍ)
+        exec sudo bash "$0" --apply "$TARGET_USER"
+        ;;
+    *)
+        echo "No se han modificado los permisos."
+        exit 0
+        ;;
+esac

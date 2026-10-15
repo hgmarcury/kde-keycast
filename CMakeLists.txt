@@ -145,6 +145,42 @@ configure_file(
     @ONLY
 )
 
+set(KDE_KEYCAST_BACKEND_FULL_PATH
+    "${KDE_INSTALL_FULL_LIBEXECDIR}/kde-keycast/showmethekey-cli"
+)
+
+configure_file(
+    ${CMAKE_CURRENT_SOURCE_DIR}/resources/polkit/com.github.hgmarcury.kde-keycast.policy
+    ${CMAKE_CURRENT_BINARY_DIR}/com.github.hgmarcury.kde-keycast.policy
+    @ONLY
+)
+
+configure_file(
+    ${CMAKE_CURRENT_SOURCE_DIR}/packaging/configure-kde-keycast-permissions.sh.in
+    ${CMAKE_CURRENT_BINARY_DIR}/configure-kde-keycast-permissions
+    @ONLY
+)
+
+install(
+    PROGRAMS
+        ${CMAKE_CURRENT_BINARY_DIR}/configure-kde-keycast-permissions
+    DESTINATION
+        ${KDE_INSTALL_BINDIR}
+)
+
+configure_file(
+    ${CMAKE_CURRENT_SOURCE_DIR}/packaging/remove-kde-keycast-permissions.sh.in
+    ${CMAKE_CURRENT_BINARY_DIR}/remove-kde-keycast-permissions
+    @ONLY
+)
+
+install(
+    PROGRAMS
+        ${CMAKE_CURRENT_BINARY_DIR}/remove-kde-keycast-permissions
+    DESTINATION
+        ${KDE_INSTALL_BINDIR}
+)
+
 target_compile_definitions(kde-keycast PRIVATE
     KDE_KEYCAST_LIBEXECDIR="${KDE_INSTALL_LIBEXECDIR}"
 )
@@ -212,6 +248,20 @@ install(
 install(
     TARGETS showmethekey-cli
     RUNTIME DESTINATION ${KDE_INSTALL_LIBEXECDIR}/kde-keycast
+)
+
+install(
+    FILES
+        ${CMAKE_CURRENT_BINARY_DIR}/com.github.hgmarcury.kde-keycast.policy
+    DESTINATION
+        ${CMAKE_INSTALL_DATAROOTDIR}/polkit-1/actions
+)
+
+install(
+    FILES
+        ${CMAKE_CURRENT_SOURCE_DIR}/resources/polkit/10-com.github.hgmarcury.kde-keycast.rules
+    DESTINATION
+        ${CMAKE_INSTALL_DATAROOTDIR}/kde-keycast/polkit
 )
 
 install(

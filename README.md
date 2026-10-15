@@ -71,33 +71,49 @@ These libraries are normally provided by a modern Linux distribution running KDE
 
 ### Input device permissions
 
-KDE KeyCast reads keyboard and mouse events from the Linux input devices under:
+KDE KeyCast needs permission to read keyboard and mouse events from Linux input devices under:
 
 ```text
 /dev/input/event*
 ```
 
-Depending on the distribution and its default permissions, the current user may need to belong to the `input` group.
+Depending on the distribution, these permissions may not be available to the current user by default.
 
-On systems where this is required:
+There are two ways to grant access:
 
-```bash
-sudo usermod -aG input $USER
-```
+**Option 1: Use the `input` group**
 
-After adding the user to the group, **log out and log in again**, or reboot the system.
-
-Verify that the group is active:
+On systems where this is the intended configuration, add the user to the group:
 
 ```bash
-groups
+sudo usermod -aG input "$USER"
 ```
 
-The output should include:
+Log out and log in again for the new group membership to take effect.
 
-```text
-input
+**Security note:** Membership in `input` may grant access to input devices beyond those used by KDE KeyCast.
+
+**Option 2: Configure optional KDE KeyCast Polkit permissions**
+
+For system-wide installations, KDE KeyCast provides an optional configuration that creates a dedicated `kde-keycast` group and installs a Polkit rule for its bundled input backend.
+
+To configure it, run:
+
+```bash
+configure-kde-keycast-permissions
 ```
+
+The script explains the permissions and asks for confirmation before making system changes. Administrative privileges are required. Only users explicitly added to the dedicated group are granted this authorization, and the rule applies to local, active sessions.
+
+To remove the permissions configured by this helper, run:
+
+```bash
+remove-kde-keycast-permissions
+```
+
+Users must log out and log in again after their group membership changes.
+
+**Important:** This configuration grants sensitive access to keyboard and mouse events. Only authorize users you trust. Neither the group nor the active Polkit rule is created automatically during installation.
 
 Without the required permissions, KDE KeyCast may start normally but will not display keyboard or mouse events.
 
