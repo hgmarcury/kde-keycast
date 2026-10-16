@@ -20,6 +20,7 @@ RULE_DEST="/etc/polkit-1/rules.d/50-com.github.hgmarcury.kde-keycast.rules"
 GROUP_NAME="kde-keycast"
 STATE_DIR="/var/lib/kde-keycast/permissions"
 MEMBERS_FILE="$STATE_DIR/members"
+STATUS_MARKER="/var/lib/kde-keycast/permissions-configured"
 
 if [[ "${1:-}" == "--apply" ]]; then
     [[ "$(id -u)" -eq 0 ]] || {
@@ -143,6 +144,13 @@ if [[ "${1:-}" == "--apply" ]]; then
         echo "La retirada no se ha completado; revisa los avisos anteriores."
         exit 1
     fi
+
+    if [[ -e "$STATUS_MARKER" ]] && ! rm -f -- "$STATUS_MARKER"; then
+        echo "PENDIENTE: No se pudo retirar el indicador de estado."
+        exit 1
+    fi
+
+    rmdir -- "$(dirname "$STATE_DIR")" 2>/dev/null || true
 
     echo "Permisos registrados de KDE KeyCast retirados."
     exit 0

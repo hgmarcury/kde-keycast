@@ -27,9 +27,7 @@ namespace KDEKeyCast {
 namespace {
 
 constexpr auto GroupName = "kde-keycast";
-constexpr auto RulePath =
-    "/etc/polkit-1/rules.d/50-com.github.hgmarcury.kde-keycast.rules";
-constexpr auto StatePath = "/var/lib/kde-keycast/permissions";
+constexpr auto StatusPath = "/var/lib/kde-keycast/permissions-configured";
 
 QString currentUserName()
 {
@@ -135,11 +133,9 @@ PermissionsDialog::PermissionsDialog(QWidget *parent)
 
 void PermissionsDialog::refreshStatus()
 {
-    const QString userName = currentUserName();
-    const bool ruleExists = QFileInfo::exists(
-        QString::fromLatin1(RulePath)
+    const bool configured = QFileInfo::exists(
+        QString::fromLatin1(StatusPath)
     );
-
     const bool groupExists = getgrnam(GroupName) != nullptr;
 
     bool userInGroup = false;
@@ -170,18 +166,14 @@ void PermissionsDialog::refreshStatus()
         }
     }
 
-    const bool stateExists = QFileInfo::exists(
-        QString::fromLatin1(StatePath)
-    );
-
-    if (ruleExists && groupExists && userInGroup) {
+    if (configured && groupExists && userInGroup) {
         m_statusLabel->setText(
             QStringLiteral(
-                "La regla de Polkit y el grupo están presentes, y tu "
-                "sesión pertenece al grupo kde-keycast."
+                "La configuración de permisos está registrada y tu sesión "
+                "pertenece al grupo kde-keycast."
             )
         );
-    } else if (!ruleExists && !groupExists && !stateExists) {
+    } else if (!configured && !groupExists) {
         m_statusLabel->setText(
             QStringLiteral("No se detecta una configuración de permisos.")
         );

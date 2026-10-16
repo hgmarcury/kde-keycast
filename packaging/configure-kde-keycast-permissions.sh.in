@@ -20,6 +20,7 @@ RULE_DEST="/etc/polkit-1/rules.d/50-com.github.hgmarcury.kde-keycast.rules"
 GROUP_NAME="kde-keycast"
 STATE_DIR="/var/lib/kde-keycast/permissions"
 MEMBERS_FILE="$STATE_DIR/members"
+STATUS_MARKER="/var/lib/kde-keycast/permissions-configured"
 
 if [[ "${1:-}" == "--apply" ]]; then
     [[ "$(id -u)" -eq 0 ]] || {
@@ -85,6 +86,7 @@ if [[ "${1:-}" == "--apply" ]]; then
     MEMBER_RECORDED_NOW=0
     RULE_INSTALLED_NOW=0
     RULE_TMP=""
+    STATUS_MARKER_CREATED_NOW=0
     GROUP_MARKER_EXISTED=0
     RULE_MARKER_EXISTED=0
     if [[ -e "$STATE_DIR/group-created" ]]; then GROUP_MARKER_EXISTED=1; fi
@@ -97,6 +99,13 @@ if [[ "${1:-}" == "--apply" ]]; then
 
         trap - ERR
         set +e
+
+        if (( STATUS_MARKER_CREATED_NOW )); then
+            if ! rm -f -- "$STATUS_MARKER"; then
+                echo "AVISO: No se pudo retirar el indicador de estado."
+                cleanup_failed=1
+            fi
+        fi
 
         if [[ -n "$RULE_TMP" && -e "$RULE_TMP" ]]; then
             if ! rm -f -- "$RULE_TMP"; then
@@ -189,6 +198,11 @@ if [[ "${1:-}" == "--apply" ]]; then
         chmod 0600 "$STATE_DIR/rule-installed"
     else
         echo "La regla ya existe y coincide con la de KDE KeyCast."
+    fi
+
+    if [[ ! -e "$STATUS_MARKER" ]]; then
+        install -o root -g root -m 0644 /dev/null "$STATUS_MARKER"
+        STATUS_MARKER_CREATED_NOW=1
     fi
 
     trap - ERR
