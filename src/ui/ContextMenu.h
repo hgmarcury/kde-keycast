@@ -43,6 +43,7 @@ public:
 
         std::function<void()> manageKWinIntegration;
         std::function<void()> toggleKWinIntegration;
+        std::function<void()> manageInputPermissions;
 
         std::function<void()> showShortcutHelp;
         std::function<void()> showAbout;

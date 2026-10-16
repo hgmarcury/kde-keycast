@@ -68,6 +68,7 @@
 #include "src/ui/AboutDialog.h"
 #include "src/ui/ContextMenu.h"
 #include "src/kwin/KWinIntegration.h"
+#include "src/permissions/PermissionsDialog.h"
 #include "src/ui/StatusToast.h"
 
 class KeyCast : public QWidget
@@ -5570,6 +5571,12 @@ void KeyCast::contextMenuEvent(
             KDEKeyCast::KWinIntegrationDialog::showError();
         }
     };
+
+    actions.manageInputPermissions =
+        [this]() {
+            KDEKeyCast::PermissionsDialog dialog(this);
+            dialog.exec();
+        };
 
     actions.addDisplayDuration =
         [this](QMenu &menu) {

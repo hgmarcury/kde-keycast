@@ -113,6 +113,9 @@ add_executable(kde-keycast
     src/kwin/KWinIntegration.cpp
     src/kwin/KWinIntegrationDialog.h
     src/kwin/KWinIntegrationDialog.cpp
+
+    src/permissions/PermissionsDialog.h
+    src/permissions/PermissionsDialog.cpp
 )
 
 add_executable(showmethekey-cli
@@ -161,6 +164,14 @@ configure_file(
     @ONLY
 )
 
+file(CHMOD
+    ${CMAKE_CURRENT_BINARY_DIR}/configure-kde-keycast-permissions
+    PERMISSIONS
+        OWNER_READ OWNER_WRITE OWNER_EXECUTE
+        GROUP_READ GROUP_WRITE GROUP_EXECUTE
+        WORLD_READ WORLD_EXECUTE
+)
+
 install(
     PROGRAMS
         ${CMAKE_CURRENT_BINARY_DIR}/configure-kde-keycast-permissions
@@ -172,6 +183,14 @@ configure_file(
     ${CMAKE_CURRENT_SOURCE_DIR}/packaging/remove-kde-keycast-permissions.sh.in
     ${CMAKE_CURRENT_BINARY_DIR}/remove-kde-keycast-permissions
     @ONLY
+)
+
+file(CHMOD
+    ${CMAKE_CURRENT_BINARY_DIR}/remove-kde-keycast-permissions
+    PERMISSIONS
+        OWNER_READ OWNER_WRITE OWNER_EXECUTE
+        GROUP_READ GROUP_WRITE GROUP_EXECUTE
+        WORLD_READ WORLD_EXECUTE
 )
 
 install(

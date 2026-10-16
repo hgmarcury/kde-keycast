@@ -316,6 +316,20 @@ void ContextMenu::exec(
         );
     }
 
+    QAction *permissionsAction =
+        menu.addAction(
+            QStringLiteral("Manage input permissions…")
+        );
+
+    QObject::connect(
+        permissionsAction,
+        &QAction::triggered,
+        [actions]() {
+            if (actions.manageInputPermissions)
+                actions.manageInputPermissions();
+        }
+    );
+
     menu.addSeparator();
 
     QAction *shortcutsAction =
