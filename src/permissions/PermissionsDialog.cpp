@@ -260,9 +260,11 @@ void PermissionsDialog::startPermissionProcess(
     const QStringList &arguments
 )
 {
-    const QString scriptPath = QDir(
-        QCoreApplication::applicationDirPath()
-    ).filePath(scriptName);
+    const QString scriptPath = qEnvironmentVariableIsSet("APPIMAGE")
+        ? QDir(QStringLiteral("/usr/lib/kde-keycast-appimage"))
+              .filePath(scriptName)
+        : QDir(QCoreApplication::applicationDirPath())
+              .filePath(scriptName);
 
     if (!QFileInfo(scriptPath).isExecutable()) {
         QMessageBox::critical(

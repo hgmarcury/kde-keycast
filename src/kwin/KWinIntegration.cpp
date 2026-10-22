@@ -10,6 +10,9 @@
 #include <QCoreApplication>
 #include <QDir>
 #include <QFileInfo>
+#include <QFile>
+#include <QJsonDocument>
+#include <QJsonObject>
 
 namespace {
 
@@ -86,24 +89,56 @@ namespace KDEKeyCast {
 
     bool KWinIntegration::isInstalled()
     {
-        const QString dataLocation =
-            QStandardPaths::writableLocation(
+        const QStringList dataLocations =
+            QStandardPaths::standardLocations(
                 QStandardPaths::GenericDataLocation);
 
-        if (dataLocation.isEmpty())
-            return false;
-
-        const QString packagePath =
-            QDir(dataLocation)
-                .absoluteFilePath(
+        for (const QString &dataLocation : dataLocations) {
+            const QString packagePath =
+                QDir(dataLocation).absoluteFilePath(
                     QStringLiteral("kwin/scripts/kde-keycast"));
 
-        return QFileInfo(packagePath).isDir() &&
-               QFileInfo(
-                   QDir(packagePath)
-                       .absoluteFilePath(QStringLiteral("metadata.json")))
-                   .isFile();
+            const QString metadataPath =
+                QDir(packagePath).absoluteFilePath(
+                    QStringLiteral("metadata.json"));
+
+            if (!QFileInfo(packagePath).isDir() ||
+                QFileInfo(packagePath).isSymLink() ||
+                !QFileInfo(metadataPath).isFile() ||
+                QFileInfo(metadataPath).isSymLink()) {
+                continue;
+            }
+
+            QFile metadataFile(metadataPath);
+
+            if (!metadataFile.open(QIODevice::ReadOnly))
+                continue;
+
+            QJsonParseError parseError;
+            const QJsonDocument metadata =
+                QJsonDocument::fromJson(
+                    metadataFile.readAll(), &parseError);
+
+            if (parseError.error != QJsonParseError::NoError ||
+                !metadata.isObject()) {
+                continue;
+            }
+
+            const QJsonObject root = metadata.object();
+            const QJsonObject plugin =
+                root.value(QStringLiteral("KPlugin")).toObject();
+
+            if (root.value(QStringLiteral("KPackageStructure")).toString()
+                    == QStringLiteral("KWin/Script") &&
+                plugin.value(QStringLiteral("Id")).toString()
+                    == QStringLiteral("kde-keycast")) {
+                return true;
+            }
+        }
+
+        return false;
     }
+
 
 bool KWinIntegration::isEnabled()
 {

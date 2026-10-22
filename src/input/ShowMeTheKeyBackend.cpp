@@ -91,20 +91,42 @@ bool ShowMeTheKeyBackend::start(EventHandler handler)
                 .arg(libexecDir)
         );
 
+    const bool isAppImage =
+        qEnvironmentVariableIsSet("APPIMAGE");
+
     const bool isDevelopmentBuild =
         QFileInfo(applicationDir).fileName()
         == QStringLiteral("build");
 
     QString backend;
 
-    if (isDevelopmentBuild
-        && QFileInfo(developmentBackend).isExecutable()) {
+    if (isAppImage) {
+        // Backend instalado en una ruta estable para la AppImage.
+        backend =
+            QStringLiteral(
+                "/usr/lib/kde-keycast-appimage/showmethekey-cli"
+            );
+    } else if (isDevelopmentBuild
+               && QFileInfo(developmentBackend).isExecutable()) {
         backend = developmentBackend;
     } else if (QFileInfo(installedBackend).isExecutable()) {
         backend = QFileInfo(installedBackend).canonicalFilePath();
     } else {
         const QString error =
             QStringLiteral("No se encontró el backend incluido.");
+        qCritical() << "KDE KeyCast:" << error;
+        emit backendError(error);
+        return false;
+    }
+
+    if (!QFileInfo(backend).isExecutable()) {
+        const QString error = isAppImage
+            ? QStringLiteral(
+                  "No se encontró el backend de KDE KeyCast AppImage. "
+                  "Instala o repara la integración de la AppImage."
+              )
+            : QStringLiteral("No se encontró el backend incluido.");
+
         qCritical() << "KDE KeyCast:" << error;
         emit backendError(error);
         return false;

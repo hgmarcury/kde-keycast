@@ -6,14 +6,18 @@ set -Eeuo pipefail
 
 SCRIPT_DIR="$(dirname "$(readlink -f "$0")")"
 
-RULE_SOURCE="$SCRIPT_DIR/../share/kde-keycast/polkit/10-com.github.hgmarcury.kde-keycast.rules"
+if [[ "$SCRIPT_DIR" == "/usr/lib/kde-keycast-appimage" ]]; then
+    RULE_SOURCE="$SCRIPT_DIR/10-com.github.hgmarcury.kde-keycast.rules"
+else
+    RULE_SOURCE="$SCRIPT_DIR/../share/kde-keycast/polkit/10-com.github.hgmarcury.kde-keycast.rules"
 
-if [[ ! -f "$RULE_SOURCE" ]]; then
-    RULE_SOURCE="$SCRIPT_DIR/../resources/polkit/10-com.github.hgmarcury.kde-keycast.rules"
-fi
+    if [[ ! -f "$RULE_SOURCE" ]]; then
+        RULE_SOURCE="$SCRIPT_DIR/../resources/polkit/10-com.github.hgmarcury.kde-keycast.rules"
+    fi
 
-if [[ ! -f "$RULE_SOURCE" ]]; then
-    RULE_SOURCE="@KDE_INSTALL_FULL_DATADIR@/kde-keycast/polkit/10-com.github.hgmarcury.kde-keycast.rules"
+    if [[ ! -f "$RULE_SOURCE" ]]; then
+        RULE_SOURCE="@KDE_INSTALL_FULL_DATADIR@/kde-keycast/polkit/10-com.github.hgmarcury.kde-keycast.rules"
+    fi
 fi
 
 RULE_DEST="/etc/polkit-1/rules.d/50-com.github.hgmarcury.kde-keycast.rules"
@@ -39,12 +43,6 @@ if [[ "${1:-}" == "--apply" ]]; then
         exit 1
     }
 
-    if [[ -e "$RULE_DEST" ]] && ! cmp -s "$RULE_SOURCE" "$RULE_DEST"; then
-        echo "ERROR: Ya existe una regla distinta en $RULE_DEST"
-        echo "No se ha sobrescrito."
-        exit 1
-    fi
-
     validate_state_dir() {
         local path="$1"
         local expected_mode="$2"
@@ -55,9 +53,9 @@ if [[ "${1:-}" == "--apply" ]]; then
                 exit 1
             }
 
-            [[ "$(stat -c '%u:%a' -- "$path")" == "0:$expected_mode" ]] || {
+            [[ "$(stat -c '%u:%g:%a' -- "$path")" == "0:0:$expected_mode" ]] || {
                 echo "ERROR: Propietario o permisos inesperados en $path."
-                echo "Se esperaba root:$expected_mode. No se ha modificado ningún permiso."
+                echo "Se esperaba root:root con modo $expected_mode. No se ha modificado ningún permiso."
                 exit 1
             }
         fi
@@ -65,6 +63,80 @@ if [[ "${1:-}" == "--apply" ]]; then
 
     validate_state_dir /var/lib/kde-keycast 755
     validate_state_dir "$STATE_DIR" 700
+
+    validate_state_file() {
+        local path="$1"
+        local expected_mode="$2"
+
+        if [[ -e "$path" || -L "$path" ]]; then
+            [[ -f "$path" && ! -L "$path" ]] || {
+                echo "ERROR: $path no es un archivo regular válido."
+                echo "No se ha modificado ningún permiso."
+                exit 1
+            }
+
+            [[ "$(stat -c '%u:%g:%a' -- "$path")" == "0:0:$expected_mode" ]] || {
+                echo "ERROR: Propietario o permisos inesperados en $path."
+                echo "Se esperaba root:root con modo $expected_mode."
+                echo "No se ha modificado ningún permiso."
+                exit 1
+            }
+        fi
+    }
+
+    validate_state_file "$STATE_DIR/group-created" 600
+    validate_state_file "$STATE_DIR/rule-installed" 600
+    validate_state_file "$MEMBERS_FILE" 600
+    validate_state_file "$STATUS_MARKER" 644
+
+    if [[ -e "$RULE_DEST" || -L "$RULE_DEST" ]]; then
+        [[ -f "$RULE_DEST" && ! -L "$RULE_DEST" ]] || {
+            echo "ERROR: La regla de Polkit no es un archivo regular:"
+            echo "  $RULE_DEST"
+            echo "No se ha modificado ningún permiso."
+            exit 1
+        }
+
+        [[ "$(stat -c '%u:%g:%a' -- "$RULE_DEST")" == "0:0:644" ]] || {
+            echo "ERROR: Propietario o permisos inesperados en $RULE_DEST."
+            echo "Se esperaba root:root con modo 644. No se ha modificado ningún permiso."
+            exit 1
+        }
+    fi
+
+    RULE_NEEDS_UPDATE=0
+
+    if [[ -e "$RULE_DEST" && ! -f "$STATE_DIR/rule-installed" ]]; then
+        echo "ERROR: Existe una regla de Polkit, pero no consta que"
+        echo "KDE KeyCast la instalara. Se conserva por seguridad:"
+        echo "  $RULE_DEST"
+        echo "No se ha modificado ningún permiso."
+        exit 1
+    fi
+
+    if [[ -e "$RULE_DEST" ]] && ! cmp -s "$RULE_SOURCE" "$RULE_DEST"; then
+        if [[ -f "$STATE_DIR/rule-installed" ]] &&
+           cmp -s "$RULE_DEST" <(printf '%s\n' \
+               '/*' \
+               ' * SPDX-FileCopyrightText: 2026 Marc G.' \
+               ' * SPDX-License-Identifier: GPL-3.0-or-later' \
+               ' */' \
+               '' \
+               'polkit.addRule(function(action, subject) {' \
+               '    if (action.id === "com.github.hgmarcury.kde-keycast.backend" &&' \
+               '        subject.isInGroup("kde-keycast") &&' \
+               '        subject.local &&' \
+               '        subject.active) {' \
+               '        return polkit.Result.YES;' \
+               '    }' \
+               '});'); then
+            RULE_NEEDS_UPDATE=1
+        else
+            echo "ERROR: Ya existe una regla distinta en $RULE_DEST"
+            echo "No se ha sobrescrito."
+            exit 1
+        fi
+    fi
 
     if getent group "$GROUP_NAME" >/dev/null; then
         [[ -f "$STATE_DIR/group-created" ]] || {
@@ -85,7 +157,9 @@ if [[ "${1:-}" == "--apply" ]]; then
     USER_ADDED_NOW=0
     MEMBER_RECORDED_NOW=0
     RULE_INSTALLED_NOW=0
+    RULE_UPDATED_NOW=0
     RULE_TMP=""
+    RULE_BACKUP=""
     STATUS_MARKER_CREATED_NOW=0
     GROUP_MARKER_EXISTED=0
     RULE_MARKER_EXISTED=0
@@ -110,6 +184,25 @@ if [[ "${1:-}" == "--apply" ]]; then
         if [[ -n "$RULE_TMP" && -e "$RULE_TMP" ]]; then
             if ! rm -f -- "$RULE_TMP"; then
                 echo "AVISO: No se pudo retirar el archivo temporal."
+                cleanup_failed=1
+            fi
+        fi
+
+        if (( RULE_UPDATED_NOW )) && [[ -n "$RULE_BACKUP" && -e "$RULE_BACKUP" ]]; then
+            if mv -f -- "$RULE_BACKUP" "$RULE_DEST"; then
+                RULE_BACKUP=""
+                echo "Se ha restaurado la regla de Polkit anterior."
+            else
+                echo "AVISO: No se pudo restaurar la regla anterior."
+                echo "Copia de seguridad: $RULE_BACKUP"
+                cleanup_failed=1
+            fi
+        fi
+
+        if [[ -n "$RULE_BACKUP" && -e "$RULE_BACKUP" ]] &&
+           (( ! RULE_UPDATED_NOW )); then
+            if ! rm -f -- "$RULE_BACKUP"; then
+                echo "AVISO: No se pudo retirar la copia temporal."
                 cleanup_failed=1
             fi
         fi
@@ -187,7 +280,17 @@ if [[ "${1:-}" == "--apply" ]]; then
         echo "El usuario ya pertenece al grupo $GROUP_NAME."
     fi
 
-    if [[ ! -e "$RULE_DEST" ]]; then
+    if (( RULE_NEEDS_UPDATE )); then
+        RULE_BACKUP="$(mktemp "${RULE_DEST}.backup.XXXXXX")"
+        cp -p -- "$RULE_DEST" "$RULE_BACKUP"
+
+        RULE_TMP="$(mktemp "${RULE_DEST}.tmp.XXXXXX")"
+        install -o root -g root -m 0644 "$RULE_SOURCE" "$RULE_TMP"
+        mv -f -- "$RULE_TMP" "$RULE_DEST"
+        RULE_TMP=""
+        RULE_UPDATED_NOW=1
+        echo "Regla antigua de KDE KeyCast actualizada."
+    elif [[ ! -e "$RULE_DEST" ]]; then
         RULE_TMP="$(mktemp "${RULE_DEST}.tmp.XXXXXX")"
         install -o root -g root -m 0644 "$RULE_SOURCE" "$RULE_TMP"
         ln -- "$RULE_TMP" "$RULE_DEST"
@@ -203,6 +306,11 @@ if [[ "${1:-}" == "--apply" ]]; then
     if [[ ! -e "$STATUS_MARKER" ]]; then
         install -o root -g root -m 0644 /dev/null "$STATUS_MARKER"
         STATUS_MARKER_CREATED_NOW=1
+    fi
+
+    if [[ -n "$RULE_BACKUP" && -e "$RULE_BACKUP" ]]; then
+        rm -- "$RULE_BACKUP"
+        RULE_BACKUP=""
     fi
 
     trap - ERR

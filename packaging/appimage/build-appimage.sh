@@ -51,6 +51,12 @@ echo "==> Installing KDE KeyCast into AppDir..."
 cmake --install "$BUILD_DIR" \
     --prefix "$APPDIR/usr"
 
+echo "==> Adding AppImage-specific Polkit policy..."
+
+install -D -m 0644 \
+    "$PROJECT_ROOT/resources/polkit/com.github.hgmarcury.kde-keycast-appimage.policy" \
+    "$APPDIR/usr/share/polkit-1/actions/com.github.hgmarcury.kde-keycast-appimage.policy"
+
 install \
     -m 0755 \
     "$PROJECT_ROOT/packaging/install-kde-keycast.sh" \
@@ -135,14 +141,12 @@ done
 
 if [[ "${1:-}" == "--uninstall" ]]; then
     USER_DATA_DIR="${XDG_DATA_HOME:-$HOME/.local/share}"
-
     KWIN_UNINSTALLER="$APPDIR/usr/bin/uninstall-kwin-kde-keycast"
 
     echo "==> Uninstalling KDE KeyCast AppImage..."
 
     if [[ -x "$KWIN_UNINSTALLER" ]]; then
         echo "==> Removing KDE KeyCast KWin integration..."
-
         if ! "$KWIN_UNINSTALLER"; then
             echo "WARNING: Could not remove the KWin integration."
             echo "Continuing with KDE KeyCast file removal..."
@@ -150,15 +154,49 @@ if [[ "${1:-}" == "--uninstall" ]]; then
     fi
 
     echo "==> Removing KDE KeyCast application integration..."
-
     rm -f \
         "$USER_DATA_DIR/applications/kde-keycast.desktop" \
         "$USER_DATA_DIR/icons/hicolor/scalable/apps/keycast-light.svg" \
         "$USER_DATA_DIR/icons/hicolor/scalable/apps/keycast-dark.svg"
 
+    # Remove shared permissions only when no native installation remains.
+    if command -v kde-keycast >/dev/null 2>&1; then
+        echo "==> Native KDE KeyCast detected; preserving shared permissions..."
+    else
+        PERMISSION_REMOVER="/usr/lib/kde-keycast-appimage/remove-kde-keycast-permissions"
+
+        if [[ ! -x "$PERMISSION_REMOVER" ]]; then
+            echo "ERROR: Permission removal helper is missing:"
+            echo "  $PERMISSION_REMOVER"
+            exit 1
+        fi
+
+        echo "==> Removing KDE KeyCast permissions..."
+        if ! sudo "$PERMISSION_REMOVER" --apply; then
+            echo "ERROR: Could not completely remove KDE KeyCast permissions."
+            echo "AppImage system files have been retained for recovery."
+            exit 1
+        fi
+    fi
+
+    echo "==> Removing AppImage-specific backend, permission scripts and Polkit files..."
+    if ! sudo rm -f \
+        /usr/lib/kde-keycast-appimage/showmethekey-cli \
+        /usr/lib/kde-keycast-appimage/configure-kde-keycast-permissions \
+        /usr/lib/kde-keycast-appimage/remove-kde-keycast-permissions \
+        /usr/lib/kde-keycast-appimage/10-com.github.hgmarcury.kde-keycast.rules \
+        /usr/share/polkit-1/actions/com.github.hgmarcury.kde-keycast-appimage.policy; then
+        echo "ERROR: Could not remove all AppImage system files."
+        exit 1
+    fi
+
+    sudo rmdir --ignore-fail-on-non-empty \
+        /usr/lib/kde-keycast-appimage
+
     echo "==> KDE KeyCast AppImage uninstalled."
     exit 0
 fi
+
 
 if [[ "${1:-}" == "--install" ]]; then
     APPIMAGE_PATH="${APPIMAGE:-}"

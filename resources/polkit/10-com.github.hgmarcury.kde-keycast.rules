@@ -1,11 +1,11 @@
-
 /*
  * SPDX-FileCopyrightText: 2026 Marc G.
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
 polkit.addRule(function(action, subject) {
-    if (action.id === "com.github.hgmarcury.kde-keycast.backend" &&
+    if ((action.id === "com.github.hgmarcury.kde-keycast.backend" ||
+         action.id === "com.github.hgmarcury.kde-keycast-appimage.backend") &&
         subject.isInGroup("kde-keycast") &&
         subject.local &&
         subject.active) {
