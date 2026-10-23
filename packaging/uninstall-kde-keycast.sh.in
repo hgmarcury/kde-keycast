@@ -65,7 +65,8 @@ rm -f \
     "$DATADIR/applications/kde-keycast.desktop" \
     "$DATADIR/icons/hicolor/scalable/apps/keycast-light.svg" \
     "$DATADIR/icons/hicolor/scalable/apps/keycast-dark.svg" \
-    "$DATADIR/metainfo/com.github.hgmarcury.kde-keycast.metainfo.xml"
+    "$DATADIR/metainfo/com.github.hgmarcury.kde-keycast.metainfo.xml" \
+    "$DATADIR/polkit-1/actions/com.github.hgmarcury.kde-keycast.policy"
 
 rm -rf \
     "$LIBEXECDIR/kde-keycast" \
