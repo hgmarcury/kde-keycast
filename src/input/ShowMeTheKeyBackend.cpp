@@ -39,7 +39,7 @@ namespace KDEKeyCast {
         groups.resize(actualCount);
         groups.push_back(getegid());
 
-        for (const char *name : {"input", "kde-keycast"}) {
+        for (const char *name : {"input"}) {
             const struct group *entry = getgrnam(name);
             if (!entry)
                 continue;
