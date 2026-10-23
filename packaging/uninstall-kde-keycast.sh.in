@@ -2,6 +2,12 @@
 
 set -euo pipefail
 
+if [[ "$(id -u)" -ne 0 ]]; then
+    echo "ERROR: Run this uninstaller with administrator privileges."
+    echo "Usage: sudo $0"
+    exit 1
+fi
+
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PREFIX="$(cd "$SCRIPT_DIR/.." && pwd)"
 
@@ -9,18 +15,45 @@ BINDIR="$SCRIPT_DIR"
 DATADIR="$PREFIX/@CMAKE_INSTALL_DATAROOTDIR@"
 LIBEXECDIR="$PREFIX/@CMAKE_INSTALL_LIBEXECDIR@"
 
-echo "==> Uninstalling KDE KeyCast..."
-
 USER_DATA_DIR=""
 
 if [[ -n "${SUDO_USER:-}" && "${SUDO_USER}" != "root" ]]; then
     USER_HOME="$(getent passwd "$SUDO_USER" | cut -d: -f6)"
-    USER_DATA_DIR="${XDG_DATA_HOME:-$USER_HOME/.local/share}"
-elif [[ "$(id -u)" -ne 0 ]]; then
-    USER_DATA_DIR="${XDG_DATA_HOME:-$HOME/.local/share}"
+
+    if [[ -z "$USER_HOME" || ! -d "$USER_HOME" ]]; then
+        echo "ERROR: Could not determine the desktop user's home directory."
+        echo "No application files or permissions have been removed."
+        exit 1
+    fi
+
+    USER_XDG_DATA_HOME="$(
+        sudo -u "$SUDO_USER" -H sh -c 'printf "%s" "${XDG_DATA_HOME:-$HOME/.local/share}"'
+    )"
+
+    if [[ "$USER_XDG_DATA_HOME" != /* ]]; then
+        echo "ERROR: The desktop user's XDG_DATA_HOME is not an absolute path."
+        echo "No application files or permissions have been removed."
+        exit 1
+    fi
+
+    USER_DATA_DIR="$USER_XDG_DATA_HOME"
+else
+    echo "ERROR: Cannot reliably determine the desktop user."
+    echo "Run this uninstaller with sudo from the desktop user's session."
+    echo "No application files or permissions have been removed."
+    exit 1
 fi
 
+echo "==> Uninstalling KDE KeyCast..."
+
 KWIN_UNINSTALLER="$BINDIR/uninstall-kwin-kde-keycast"
+
+if [[ ! -x "$KWIN_UNINSTALLER" ]]; then
+    echo "ERROR: KWin uninstaller is missing:"
+    echo "  $KWIN_UNINSTALLER"
+    echo "No application files or permissions have been removed."
+    exit 1
+fi
 
 if [[ -x "$KWIN_UNINSTALLER" ]]; then
     echo "==> Removing KDE KeyCast KWin integration..."
@@ -33,18 +66,33 @@ if [[ -x "$KWIN_UNINSTALLER" ]]; then
             DBUS_SESSION_BUS_ADDRESS="unix:path=$USER_RUNTIME_DIR/bus" \
             XDG_RUNTIME_DIR="$USER_RUNTIME_DIR" \
             "$KWIN_UNINSTALLER"; then
-            echo "WARNING: Could not remove the KWin integration."
-            echo "Continuing with KDE KeyCast file removal..."
+            echo "ERROR: Could not remove the KWin integration."
+            echo "No application files or permissions have been removed."
+            exit 1
         fi
-    elif [[ "$(id -u)" -eq 0 ]]; then
-        echo "WARNING: Cannot determine the desktop user."
-        echo "Skipping KWin integration removal."
     else
-        if ! "$KWIN_UNINSTALLER"; then
-            echo "WARNING: Could not remove the KWin integration."
-            echo "Continuing with KDE KeyCast file removal..."
-        fi
+        echo "ERROR: Cannot reliably determine the desktop user."
+        echo "Run this uninstaller with sudo from the desktop user's session."
+        echo "No application files or permissions have been removed."
+        exit 1
     fi
+fi
+
+PERMISSION_REMOVER="$BINDIR/remove-kde-keycast-permissions"
+
+if [[ ! -x "$PERMISSION_REMOVER" ]]; then
+    echo "ERROR: Permission removal helper is missing:"
+    echo "  $PERMISSION_REMOVER"
+    echo "No application files have been removed."
+    exit 1
+fi
+
+echo "==> Removing KDE KeyCast permissions..."
+
+if ! "$PERMISSION_REMOVER" --apply; then
+    echo "ERROR: Could not completely remove KDE KeyCast permissions."
+    echo "The application files have been retained for recovery."
+    exit 1
 fi
 
 if [[ -n "$USER_DATA_DIR" ]]; then

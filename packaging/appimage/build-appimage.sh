@@ -141,26 +141,103 @@ done
 
 if [[ "${1:-}" == "--uninstall" ]]; then
     USER_DATA_DIR="${XDG_DATA_HOME:-$HOME/.local/share}"
-    KWIN_UNINSTALLER="$APPDIR/usr/bin/uninstall-kwin-kde-keycast"
+
+    # Detect native installation before changing any integration or permissions.
+    NATIVE_APP="$(command -v kde-keycast || true)"
+    NATIVE_POLICY="/usr/share/polkit-1/actions/com.github.hgmarcury.kde-keycast.policy"
+    NATIVE_BINDIR=""
+    NATIVE_UNINSTALLER=""
+    NATIVE_CONFIGURER=""
+    NATIVE_PERMISSION_REMOVER=""
+    NATIVE_BACKEND=""
+    NATIVE_BACKENDS=()
+    NATIVE_TRACE=false
+    NATIVE_VALID=false
+
+    if [[ -n "$NATIVE_APP" ]]; then
+        NATIVE_APP="$(readlink -f "$NATIVE_APP")"
+        NATIVE_BINDIR="$(dirname "$NATIVE_APP")"
+        NATIVE_UNINSTALLER="$NATIVE_BINDIR/uninstall-kde-keycast"
+        NATIVE_CONFIGURER="$NATIVE_BINDIR/configure-kde-keycast-permissions"
+        NATIVE_PERMISSION_REMOVER="$NATIVE_BINDIR/remove-kde-keycast-permissions"
+        NATIVE_TRACE=true
+    fi
+
+    if [[ -e "$NATIVE_POLICY" ||
+          -e /usr/bin/uninstall-kde-keycast ||
+          -e /usr/bin/configure-kde-keycast-permissions ||
+          -e /usr/bin/remove-kde-keycast-permissions ]]; then
+        NATIVE_TRACE=true
+    fi
+
+    if [[ -r "$NATIVE_POLICY" ]]; then
+        mapfile -t NATIVE_BACKENDS < <(
+            sed -n \
+                's|.*<annotate key="org.freedesktop.policykit.exec.path">\([^<]*\)</annotate>.*|\1|p' \
+                "$NATIVE_POLICY"
+        )
+    fi
+
+    if [[ ${#NATIVE_BACKENDS[@]} -eq 1 ]]; then
+        NATIVE_BACKEND="${NATIVE_BACKENDS[0]}"
+    fi
+
+    if [[ -n "$NATIVE_APP" &&
+          -x "$NATIVE_APP" &&
+          -x "$NATIVE_UNINSTALLER" &&
+          -x "$NATIVE_CONFIGURER" &&
+          -x "$NATIVE_PERMISSION_REMOVER" &&
+          -r "$NATIVE_POLICY" &&
+          ${#NATIVE_BACKENDS[@]} -eq 1 &&
+          "$NATIVE_BACKEND" == /* &&
+          -x "$NATIVE_BACKEND" ]]; then
+        NATIVE_VALID=true
+    fi
+
+    if [[ "$NATIVE_TRACE" == true &&
+          "$NATIVE_VALID" != true ]]; then
+        echo "ERROR: An incomplete or unverified native KDE KeyCast installation was detected."
+        echo "No shared permissions or KWin integration have been changed."
+        echo "Inspect the native application, helpers, Polkit policy and backend before retrying."
+        exit 1
+    fi
 
     echo "==> Uninstalling KDE KeyCast AppImage..."
 
-    if [[ -x "$KWIN_UNINSTALLER" ]]; then
+    if [[ "$NATIVE_VALID" == true ]]; then
+        echo "==> Native KDE KeyCast detected; preserving shared KWin integration..."
+    else
+        KWIN_UNINSTALLER="$APPDIR/usr/bin/uninstall-kwin-kde-keycast"
+
+        if [[ ! -x "$KWIN_UNINSTALLER" ]]; then
+            echo "ERROR: KWin uninstaller is missing:"
+            echo "  $KWIN_UNINSTALLER"
+            echo "Cannot verify that the KWin integration has been removed."
+            exit 1
+        fi
+
         echo "==> Removing KDE KeyCast KWin integration..."
-        if ! "$KWIN_UNINSTALLER"; then
-            echo "WARNING: Could not remove the KWin integration."
-            echo "Continuing with KDE KeyCast file removal..."
+
+        USER_UID="$(id -u)"
+        USER_RUNTIME_DIR="/run/user/$USER_UID"
+
+        if [[ ! -d "$USER_RUNTIME_DIR" ||
+              ! -S "$USER_RUNTIME_DIR/bus" ]]; then
+            echo "ERROR: The desktop user's D-Bus session could not be found."
+            echo "The remaining application files have been retained for recovery."
+            exit 1
+        fi
+
+        if ! XDG_RUNTIME_DIR="$USER_RUNTIME_DIR" \
+            DBUS_SESSION_BUS_ADDRESS="unix:path=$USER_RUNTIME_DIR/bus" \
+            "$KWIN_UNINSTALLER"; then
+            echo "ERROR: Could not remove the KWin integration."
+            echo "The remaining application files have been retained for recovery."
+            exit 1
         fi
     fi
 
-    echo "==> Removing KDE KeyCast application integration..."
-    rm -f \
-        "$USER_DATA_DIR/applications/kde-keycast.desktop" \
-        "$USER_DATA_DIR/icons/hicolor/scalable/apps/keycast-light.svg" \
-        "$USER_DATA_DIR/icons/hicolor/scalable/apps/keycast-dark.svg"
-
-    # Remove shared permissions only when no native installation remains.
-    if command -v kde-keycast >/dev/null 2>&1; then
+    if [[ "$NATIVE_VALID" == true ]]; then
         echo "==> Native KDE KeyCast detected; preserving shared permissions..."
     else
         PERMISSION_REMOVER="/usr/lib/kde-keycast-appimage/remove-kde-keycast-permissions"
@@ -193,10 +270,15 @@ if [[ "${1:-}" == "--uninstall" ]]; then
     sudo rmdir --ignore-fail-on-non-empty \
         /usr/lib/kde-keycast-appimage
 
+    echo "==> Removing KDE KeyCast application integration..."
+    rm -f \
+        "$USER_DATA_DIR/applications/kde-keycast.desktop" \
+        "$USER_DATA_DIR/icons/hicolor/scalable/apps/keycast-light.svg" \
+        "$USER_DATA_DIR/icons/hicolor/scalable/apps/keycast-dark.svg"
+
     echo "==> KDE KeyCast AppImage uninstalled."
     exit 0
 fi
-
 
 if [[ "${1:-}" == "--install" ]]; then
     APPIMAGE_PATH="${APPIMAGE:-}"

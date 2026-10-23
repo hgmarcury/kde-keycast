@@ -310,55 +310,101 @@ if [[ ! -x "$BACKEND_SOURCE" ]]; then
     exit 1
 fi
 
-# Detect an existing native installation and offer migration to AppImage.
+# Detect and validate an existing native installation.
 NATIVE_APP="$(command -v kde-keycast || true)"
+NATIVE_POLICY="/usr/share/polkit-1/actions/com.github.hgmarcury.kde-keycast.policy"
+NATIVE_BINDIR=""
+NATIVE_UNINSTALLER=""
+NATIVE_CONFIGURER=""
+NATIVE_PERMISSION_REMOVER=""
+NATIVE_BACKEND=""
+NATIVE_BACKENDS=()
+NATIVE_TRACE=false
+NATIVE_VALID=false
 
 if [[ -n "$NATIVE_APP" ]]; then
     NATIVE_APP="$(readlink -f "$NATIVE_APP")"
     NATIVE_BINDIR="$(dirname "$NATIVE_APP")"
     NATIVE_UNINSTALLER="$NATIVE_BINDIR/uninstall-kde-keycast"
-
-    if [[ -x "$NATIVE_UNINSTALLER" ]]; then
-        echo
-        echo "A native KDE KeyCast installation was detected:"
-        echo "  Application: $NATIVE_APP"
-        echo
-        read -r -p "Uninstall it and migrate to this AppImage? [y/N] " answer
-
-        case "$answer" in
-            [yY]|[yY][eE][sS]|[sS]|[sS][iI])
-
-                if ! install_appimage_system_files; then
-                    exit 1
-                fi
-
-                echo "==> Removing the native installation..."
-                if ! sudo "$NATIVE_UNINSTALLER"; then
-                    echo "ERROR: Native uninstall failed."
-                    rollback_appimage_system_files
-                    exit 1
-                fi
-
-                ;;
-            *)
-                echo "Migration cancelled. No AppImage integration was installed."
-                exit 1
-                ;;
-        esac
-    else
-        echo "WARNING: KDE KeyCast was found, but its native uninstaller was not found."
-        echo "The existing installation will not be removed automatically."
-        exit 1
-    fi
+    NATIVE_CONFIGURER="$NATIVE_BINDIR/configure-kde-keycast-permissions"
+    NATIVE_PERMISSION_REMOVER="$NATIVE_BINDIR/remove-kde-keycast-permissions"
+    NATIVE_TRACE=true
 fi
 
-if [[ -z "$NATIVE_APP" ]]; then
+if [[ -e "$NATIVE_POLICY" ||
+      -e /usr/bin/uninstall-kde-keycast ||
+      -e /usr/bin/configure-kde-keycast-permissions ||
+      -e /usr/bin/remove-kde-keycast-permissions ]]; then
+    NATIVE_TRACE=true
+fi
+
+if [[ -r "$NATIVE_POLICY" ]]; then
+    mapfile -t NATIVE_BACKENDS < <(
+        sed -n \
+            's|.*<annotate key="org.freedesktop.policykit.exec.path">\([^<]*\)</annotate>.*|\1|p' \
+            "$NATIVE_POLICY"
+    )
+fi
+
+if [[ ${#NATIVE_BACKENDS[@]} -eq 1 ]]; then
+    NATIVE_BACKEND="${NATIVE_BACKENDS[0]}"
+fi
+
+if [[ -n "$NATIVE_APP" &&
+      -x "$NATIVE_APP" &&
+      -x "$NATIVE_UNINSTALLER" &&
+      -x "$NATIVE_CONFIGURER" &&
+      -x "$NATIVE_PERMISSION_REMOVER" &&
+      -r "$NATIVE_POLICY" &&
+      ${#NATIVE_BACKENDS[@]} -eq 1 &&
+      "$NATIVE_BACKEND" == /* &&
+      -x "$NATIVE_BACKEND" ]]; then
+    NATIVE_VALID=true
+fi
+
+if [[ "$NATIVE_TRACE" == true &&
+      "$NATIVE_VALID" != true ]]; then
+    echo "ERROR: An incomplete or unverified native KDE KeyCast installation was detected."
+    echo "No AppImage system files have been installed or changed."
+    echo "Inspect the native application, helpers, Polkit policy and backend before retrying."
+    exit 1
+fi
+
+if [[ "$NATIVE_VALID" == true ]]; then
+    echo
+    echo "A valid native KDE KeyCast installation was detected:"
+    echo "  Application: $NATIVE_APP"
+    echo "  Backend:     $NATIVE_BACKEND"
+    echo
+    read -r -p "Uninstall it and migrate to this AppImage? [y/N] " answer
+
+    case "$answer" in
+        [yY]|[yY][eE][sS]|[sS]|[sS][iI])
+            echo "==> Removing the native installation..."
+            if ! sudo "$NATIVE_UNINSTALLER"; then
+                echo "ERROR: Native uninstall failed."
+                echo "AppImage system files have not been installed."
+                exit 1
+            fi
+
+            echo "==> Native installation removed successfully."
+
+            if ! install_appimage_system_files; then
+                echo "ERROR: AppImage system-file installation failed."
+                echo "The native installation has already been removed."
+                exit 1
+            fi
+            ;;
+        *)
+            echo "Migration cancelled. No AppImage integration was installed."
+            exit 1
+            ;;
+    esac
+else
     if ! install_appimage_system_files; then
         exit 1
     fi
 fi
-
-
 
 echo "==> Installing KDE KeyCast application integration..."
 
