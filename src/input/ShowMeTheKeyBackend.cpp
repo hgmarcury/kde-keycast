@@ -22,19 +22,8 @@ namespace KDEKeyCast {
 
     bool hasInputGroup()
     {
-        const struct group *inputGroup = getgrnam("input");
-
-        if (!inputGroup)
-            return false;
-
-        const gid_t inputGid = inputGroup->gr_gid;
-
-        if (getegid() == inputGid)
-            return true;
-
         const int count = getgroups(0, nullptr);
-
-        if (count <= 0)
+        if (count < 0)
             return false;
 
         std::vector<gid_t> groups(count);
@@ -47,11 +36,21 @@ namespace KDEKeyCast {
         if (actualCount < 0)
             return false;
 
-        return std::find(
-            groups.begin(),
-            groups.begin() + actualCount,
-            inputGid
-        ) != groups.begin() + actualCount;
+        groups.resize(actualCount);
+        groups.push_back(getegid());
+
+        for (const char *name : {"input", "kde-keycast"}) {
+            const struct group *entry = getgrnam(name);
+            if (!entry)
+                continue;
+
+            if (std::find(groups.begin(), groups.end(), entry->gr_gid)
+                != groups.end()) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     } // namespace
