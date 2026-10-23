@@ -61,6 +61,8 @@ rm -f \
     "$BINDIR/install-kwin-kde-keycast" \
     "$BINDIR/uninstall-kwin-kde-keycast" \
     "$BINDIR/uninstall-kde-keycast" \
+    "$BINDIR/configure-kde-keycast-permissions" \
+    "$BINDIR/remove-kde-keycast-permissions" \
     "$LIBEXECDIR/kde-keycast/showmethekey-cli" \
     "$DATADIR/applications/kde-keycast.desktop" \
     "$DATADIR/icons/hicolor/scalable/apps/keycast-light.svg" \
