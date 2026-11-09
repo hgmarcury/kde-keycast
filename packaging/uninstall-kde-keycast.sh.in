@@ -99,7 +99,9 @@ if [[ -n "$USER_DATA_DIR" ]]; then
     echo "==> Removing KDE KeyCast user desktop integration..."
 
     rm -f \
-        "$USER_DATA_DIR/applications/kde-keycast.desktop"
+        "$USER_DATA_DIR/applications/kde-keycast.desktop" \
+        "$USER_DATA_DIR/icons/hicolor/scalable/apps/keycast-light.svg" \
+        "$USER_DATA_DIR/icons/hicolor/scalable/apps/keycast-dark.svg"
 fi
 
 echo "==> Removing KDE KeyCast files..."

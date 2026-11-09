@@ -172,6 +172,30 @@ file(CHMOD
         WORLD_READ WORLD_EXECUTE
 )
 
+configure_file(
+    ${CMAKE_CURRENT_SOURCE_DIR}/packaging/migrate-appimage-to-native.sh.in
+    ${CMAKE_CURRENT_BINARY_DIR}/migrate-appimage-to-native
+    @ONLY
+)
+
+file(CHMOD
+    ${CMAKE_CURRENT_BINARY_DIR}/migrate-appimage-to-native
+    PERMISSIONS
+        OWNER_READ OWNER_WRITE OWNER_EXECUTE
+        GROUP_READ GROUP_WRITE GROUP_EXECUTE
+        WORLD_READ WORLD_EXECUTE
+)
+
+install(CODE "
+    execute_process(
+        COMMAND \"${CMAKE_CURRENT_BINARY_DIR}/migrate-appimage-to-native\" --prepare
+        RESULT_VARIABLE _kde_keycast_migration_prepare_result
+    )
+    if(NOT \"\${_kde_keycast_migration_prepare_result}\" STREQUAL \"0\")
+        message(FATAL_ERROR \"Migración AppImage → nativa cancelada o preparación fallida.\")
+    endif()
+")
+
 install(
     PROGRAMS
         ${CMAKE_CURRENT_BINARY_DIR}/configure-kde-keycast-permissions
@@ -302,3 +326,13 @@ install(
     DESTINATION
         ${CMAKE_INSTALL_DATAROOTDIR}/metainfo
 )
+
+install(CODE "
+    execute_process(
+        COMMAND \"${CMAKE_CURRENT_BINARY_DIR}/migrate-appimage-to-native\" --finish
+        RESULT_VARIABLE _kde_keycast_migration_finish_result
+    )
+    if(NOT \"\${_kde_keycast_migration_finish_result}\" STREQUAL \"0\")
+        message(FATAL_ERROR \"No se pudo completar la limpieza de la integración AppImage.\")
+    endif()
+")

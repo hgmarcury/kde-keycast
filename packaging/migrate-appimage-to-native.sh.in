@@ -1,0 +1,156 @@
+#!/usr/bin/env bash
+# SPDX-FileCopyrightText: 2026 Marc G.
+# SPDX-License-Identifier: GPL-3.0-or-later
+
+set -Eeuo pipefail
+
+MODE="${1:-}"
+
+APPIMAGE_DIR="/usr/lib/kde-keycast-appimage"
+APPIMAGE_BACKEND="$APPIMAGE_DIR/showmethekey-cli"
+APPIMAGE_CONFIGURE="$APPIMAGE_DIR/configure-kde-keycast-permissions"
+APPIMAGE_REMOVE="$APPIMAGE_DIR/remove-kde-keycast-permissions"
+APPIMAGE_RULE="$APPIMAGE_DIR/10-com.github.hgmarcury.kde-keycast.rules"
+APPIMAGE_POLICY="/usr/share/polkit-1/actions/com.github.hgmarcury.kde-keycast-appimage.policy"
+
+NATIVE_APP="@KDE_INSTALL_FULL_BINDIR@/kde-keycast"
+NATIVE_BACKEND="@KDE_INSTALL_FULL_LIBEXECDIR@/kde-keycast/showmethekey-cli"
+NATIVE_POLICY="@KDE_INSTALL_FULL_DATADIR@/polkit-1/actions/com.github.hgmarcury.kde-keycast.policy"
+
+MARKER="@CMAKE_CURRENT_BINARY_DIR@/.kde-keycast-appimage-migration-pending"
+
+get_user_data_dir() {
+    if [[ "$(id -u)" -ne 0 ||
+          -z "${SUDO_USER:-}" ||
+          "$SUDO_USER" == root ]]; then
+        echo "ERROR: No se puede identificar al usuario de escritorio."
+        return 1
+    fi
+
+    local user_home
+    user_home="$(getent passwd "$SUDO_USER" | cut -d: -f6)"
+
+    if [[ -z "$user_home" || ! -d "$user_home" ]]; then
+        echo "ERROR: No se puede determinar el directorio personal del usuario."
+        return 1
+    fi
+
+    USER_DATA_DIR="$(
+        sudo -u "$SUDO_USER" -H sh -c \
+            'printf "%s" "${XDG_DATA_HOME:-$HOME/.local/share}"'
+    )"
+
+    if [[ "$USER_DATA_DIR" != /* ]]; then
+        echo "ERROR: XDG_DATA_HOME no es una ruta absoluta."
+        return 1
+    fi
+}
+
+has_appimage_system_files() {
+    [[ -e "$APPIMAGE_BACKEND" ||
+       -e "$APPIMAGE_CONFIGURE" ||
+       -e "$APPIMAGE_REMOVE" ||
+       -e "$APPIMAGE_RULE" ||
+       -e "$APPIMAGE_POLICY" ]]
+}
+
+case "$MODE" in
+    --prepare)
+        # Every installation attempt must obtain fresh confirmation.
+        rm -f -- "$MARKER"
+
+        if ! has_appimage_system_files; then
+            echo "No se ha detectado la integración de sistema de AppImage."
+            exit 0
+        fi
+
+        get_user_data_dir || exit 1
+
+        echo
+        echo "Se ha detectado una integración AppImage de KDE KeyCast."
+        echo "Se retirará únicamente después de completar la instalación nativa."
+        echo "Los permisos compartidos y KWin se conservarán."
+        echo
+
+        read -r -p "¿Continuar con la migración a la versión nativa? [s/N] " answer
+
+        case "$answer" in
+            [sS]|[sS][iI]|[yY]|[yY][eE][sS])
+                mkdir -p "$(dirname "$MARKER")"
+                printf '%s\n' "$USER_DATA_DIR" > "$MARKER"
+                chmod 0600 "$MARKER"
+                echo "Migración preparada; no se ha retirado ningún archivo AppImage."
+                ;;
+            *)
+                echo "Migración cancelada."
+                exit 1
+                ;;
+        esac
+        ;;
+
+    --finish)
+        [[ -f "$MARKER" ]] || exit 0
+
+        if [[ "$(id -u)" -ne 0 ]]; then
+            echo "ERROR: Se necesitan privilegios de administrador para finalizar la migración."
+            exit 1
+        fi
+
+        # Reuse the exact user data directory recorded during preparation.
+        IFS= read -r USER_DATA_DIR < "$MARKER"
+
+        if [[ "$USER_DATA_DIR" != /* ]]; then
+            echo "ERROR: El marcador de migración contiene una ruta no válida."
+            exit 1
+        fi
+
+        # Verify that the native installation has actually completed.
+        if [[ ! -x "$NATIVE_APP" ||
+              ! -x "$NATIVE_BACKEND" ||
+              ! -r "$NATIVE_POLICY" ]] ||
+           ! grep -Fq "org.freedesktop.policykit.exec.path" "$NATIVE_POLICY" ||
+           ! grep -Fq "$NATIVE_BACKEND" "$NATIVE_POLICY"; then
+            echo "ERROR: La instalación nativa no está completa o su política Polkit no apunta al backend esperado."
+            echo "Se conserva la integración AppImage."
+            exit 1
+        fi
+
+        DESKTOP_FILE="$USER_DATA_DIR/applications/kde-keycast.desktop"
+
+        # Remove user integration only if its Exec entry points to an AppImage.
+        if [[ -f "$DESKTOP_FILE" &&
+              ! -L "$DESKTOP_FILE" ]] &&
+           grep -Eq '^Exec=.*\.AppImage([[:space:]]|$)' "$DESKTOP_FILE"; then
+
+            echo "==> Retirando la entrada de escritorio de AppImage..."
+
+            rm -f -- \
+                "$DESKTOP_FILE" \
+                "$USER_DATA_DIR/icons/hicolor/scalable/apps/keycast-light.svg" \
+                "$USER_DATA_DIR/icons/hicolor/scalable/apps/keycast-dark.svg"
+        else
+            echo "==> No se ha identificado una entrada de escritorio AppImage; se conserva."
+        fi
+
+        echo "==> Retirando los archivos exclusivos de AppImage..."
+
+        rm -f -- \
+            "$APPIMAGE_BACKEND" \
+            "$APPIMAGE_CONFIGURE" \
+            "$APPIMAGE_REMOVE" \
+            "$APPIMAGE_RULE" \
+            "$APPIMAGE_POLICY"
+
+        rmdir --ignore-fail-on-non-empty "$APPIMAGE_DIR" || true
+
+        rm -f -- "$MARKER"
+
+        echo "Migración AppImage → nativa completada."
+        echo "Los permisos compartidos y KWin se han conservado."
+        ;;
+
+    *)
+        echo "Uso: $0 --prepare|--finish"
+        exit 2
+        ;;
+esac
