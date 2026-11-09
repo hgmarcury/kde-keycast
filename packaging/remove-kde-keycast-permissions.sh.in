@@ -25,6 +25,7 @@ GROUP_NAME="kde-keycast"
 STATE_DIR="/var/lib/kde-keycast/permissions"
 MEMBERS_FILE="$STATE_DIR/members"
 STATUS_MARKER="/var/lib/kde-keycast/permissions-configured"
+USER_DATA_REGISTRY="/var/lib/kde-keycast/appimage-user-data-dir"
 
 if [[ "${1:-}" == "--apply" ]]; then
     [[ "$(id -u)" -eq 0 ]] || {
@@ -80,6 +81,7 @@ if [[ "${1:-}" == "--apply" ]]; then
     validate_state_file "$STATE_DIR/rule-installed" 600
     validate_state_file "$MEMBERS_FILE" 600
     validate_state_file "$STATUS_MARKER" 644
+    validate_state_file "$USER_DATA_REGISTRY" 644
 
     if [[ -e "$RULE_DEST" || -L "$RULE_DEST" ]]; then
         [[ -f "$RULE_DEST" && ! -L "$RULE_DEST" ]] || {
@@ -278,6 +280,12 @@ if [[ "${1:-}" == "--apply" ]]; then
 
     if [[ -e "$STATUS_MARKER" ]] && ! rm -f -- "$STATUS_MARKER"; then
         echo "PENDIENTE: No se pudo retirar el indicador de estado."
+        exit 1
+    fi
+
+    if [[ -e "$USER_DATA_REGISTRY" ]] &&
+        ! rm -f -- "$USER_DATA_REGISTRY"; then
+        echo "PENDIENTE: No se pudo retirar el registro del directorio de usuario."
         exit 1
     fi
 
