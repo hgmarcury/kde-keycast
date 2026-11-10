@@ -65,7 +65,7 @@ if [[ -x "$KWIN_UNINSTALLER" ]]; then
         if ! sudo -u "$SUDO_USER" \
             DBUS_SESSION_BUS_ADDRESS="unix:path=$USER_RUNTIME_DIR/bus" \
             XDG_RUNTIME_DIR="$USER_RUNTIME_DIR" \
-            "$KWIN_UNINSTALLER"; then
+            "$KWIN_UNINSTALLER" --remove-shared-package; then
             echo "ERROR: Could not remove the KWin integration."
             echo "No application files or permissions have been removed."
             exit 1

@@ -4,6 +4,19 @@
 
 set -euo pipefail
 
+REMOVE_SHARED_PACKAGE=false
+
+case "${1:-}" in
+"") ;;
+--remove-shared-package)
+    REMOVE_SHARED_PACKAGE=true
+    ;;
+*)
+    echo "ERROR: Unknown argument: $1"
+    exit 1
+    ;;
+esac
+
 KPACKAGETOOL="$(command -v kpackagetool6 || true)"
 KWritECONFIG="$(command -v kwriteconfig6 || true)"
 QDBUS="$(command -v qdbus6 || command -v qdbus-qt6 || true)"
@@ -100,30 +113,49 @@ remove_global_package() {
     fi
 }
 
-remove_global_package \
-    "$SHARED_GLOBAL_PACKAGE" \
-    "shared global KDE KeyCast package"
+# Remove the shared package only during a complete application uninstall.
+if [[ "$REMOVE_SHARED_PACKAGE" == true ]]; then
+    remove_global_package \
+        "$SHARED_GLOBAL_PACKAGE" \
+        "shared global KDE KeyCast package"
+fi
 
+# The legacy global package is no longer used by KDE KeyCast.
 remove_global_package \
     "$LEGACY_GLOBAL_PACKAGE" \
     "legacy global KDE KeyCast package"
 
-# Remove only empty shared data directories.
-if [[ -d /usr/share/kde-keycast ]]; then
-    if [[ -z "$PKEXEC" ]]; then
-        echo "ERROR: pkexec is required to clean the shared data directories."
-        exit 1
-    fi
+if [[ "$REMOVE_SHARED_PACKAGE" == true ]]; then
+    # Remove only existing, empty shared data directories.
+    SHARED_DIRECTORIES=()
 
-    "$PKEXEC" /usr/bin/rmdir --ignore-fail-on-non-empty -- \
+    for directory in \
         /usr/share/kde-keycast/kwin \
         /usr/share/kde-keycast/polkit \
-        /usr/share/kde-keycast
-fi
+        /usr/share/kde-keycast; do
+        if [[ -d "$directory" ]]; then
+            SHARED_DIRECTORIES+=("$directory")
+        fi
+    done
 
-if [[ ! -e "$SHARED_GLOBAL_PACKAGE" &&
-    ! -e "$LEGACY_GLOBAL_PACKAGE" ]]; then
-    echo "==> No remaining global KDE KeyCast packages."
+    if [[ ${#SHARED_DIRECTORIES[@]} -gt 0 ]]; then
+        if [[ -z "$PKEXEC" ]]; then
+            echo "ERROR: pkexec is required to clean the shared data directories."
+            exit 1
+        fi
+
+        "$PKEXEC" /usr/bin/rmdir --ignore-fail-on-non-empty -- \
+            "${SHARED_DIRECTORIES[@]}"
+    fi
+
+    if [[ ! -e "$SHARED_GLOBAL_PACKAGE" &&
+        ! -L "$SHARED_GLOBAL_PACKAGE" &&
+        ! -e "$LEGACY_GLOBAL_PACKAGE" &&
+        ! -L "$LEGACY_GLOBAL_PACKAGE" ]]; then
+        echo "==> No remaining global KDE KeyCast packages."
+    fi
+else
+    echo "==> Shared global KDE KeyCast package retained for future installation."
 fi
 echo "==> Reconfiguring KWin..."
 
