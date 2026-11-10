@@ -2,7 +2,6 @@
 # SPDX-FileCopyrightText: 2026 Marc G.
 # SPDX-License-Identifier: GPL-3.0-or-later
 
-
 set -euo pipefail
 
 PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
@@ -90,7 +89,7 @@ echo
 echo "==> Running linuxdeploy..."
 
 QMAKE=/usr/bin/qmake6 \
-"$LINUXDEPLOY" \
+    "$LINUXDEPLOY" \
     --appdir "$APPDIR" \
     --executable "$APPDIR/usr/bin/kde-keycast" \
     --desktop-file "$APPDIR/usr/share/applications/kde-keycast.desktop" \
@@ -121,23 +120,15 @@ echo "==> Creating AppRun launcher..."
 
 rm -f "$APPDIR/AppRun"
 
-cat > "$APPDIR/AppRun" <<'EOF'
+cat >"$APPDIR/AppRun" <<'EOF'
 #!/usr/bin/env bash
 
 set -e
 
 APPDIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-for plugin_dir in \
-    /usr/lib/*/qt6/plugins \
-    /usr/lib64/qt6/plugins \
-    /usr/lib/qt6/plugins
-do
-    if [[ -d "$plugin_dir" ]]; then
-        export QT_PLUGIN_PATH="$plugin_dir${QT_PLUGIN_PATH:+:$QT_PLUGIN_PATH}"
-        break
-    fi
-done
+export QT_PLUGIN_PATH="$APPDIR/usr/plugins"
+export QT_QPA_PLATFORM_PLUGIN_PATH="$APPDIR/usr/plugins/platforms"
 
 if [[ "${1:-}" == "--uninstall" ]]; then
     USER_DATA_DIR="${XDG_DATA_HOME:-$HOME/.local/share}"
