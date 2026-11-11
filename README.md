@@ -467,9 +467,18 @@ KDE KeyCast is not an official KDE project and is not affiliated with KDE e.V.
 
 ## Contributing
 
-Contributions, fixes, and suggestions are welcome.
+KDE KeyCast is an open-source project, and contributions from the community are welcome!
+
+Whether you're a user, developer or simply interested in the project, there are several ways to get involved:
+
+- **Report a bug:** Found something that doesn't work as expected? [Open a bug report](https://github.com/hgmarcury/kde-keycast/issues/new/choose).
+- **Suggest an improvement:** Have an idea for a new feature? [Submit a feature request](https://github.com/hgmarcury/kde-keycast/issues/new/choose).
+- **Ask questions and share ideas:** Join [GitHub Discussions](https://github.com/hgmarcury/kde-keycast/discussions).
+- **Contribute code:** Read our [Contributing Guidelines](CONTRIBUTING.md) to learn how to submit changes.
 
 For significant changes, opening a discussion or issue before implementation is recommended.
+
+Every contribution, suggestion and report is appreciated. Thank you for helping improve KDE KeyCast!
 
 ## Project
 
