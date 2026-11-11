@@ -1,4 +1,3 @@
-
 <p align="center"> <picture> <source media="(prefers-color-scheme: dark)" srcset="resources/icons/keycast-light.svg"> <source media="(prefers-color-scheme: light)" srcset="resources/icons/keycast-dark.svg"> <img src="resources/icons/keycast-dark.svg" width="180" alt="KDE KeyCast"> </picture> </p>
 
 <h1 align="center">KDE KeyCast</h1>
@@ -17,15 +16,15 @@ KDE KeyCast displays pressed keys and key combinations visually, using XKB to co
 
 ## Features
 
-* Captures keyboard events using the bundled ShowMeTheKey backend.
-* Uses XKB to correctly resolve keys according to the system keyboard layout.
-* Displays characters produced by `Shift`.
-* Displays combinations involving `Ctrl`, `Alt`, `AltGr`, `Meta`, and `Shift` when appropriate.
-* Represents special keys using appropriate names or symbols.
-* Detects and displays mouse events, including mouse wheel scrolling.
-* Includes a compact mode for displaying only relevant key combinations.
-* Provides KDE/Plasma integration through a system tray icon.
-* Includes optional KWin integration.
+- Captures keyboard events using the bundled ShowMeTheKey backend.
+- Uses XKB to correctly resolve keys according to the system keyboard layout.
+- Displays characters produced by `Shift`.
+- Displays combinations involving `Ctrl`, `Alt`, `AltGr`, `Meta`, and `Shift` when appropriate.
+- Represents special keys using appropriate names or symbols.
+- Detects and displays mouse events, including mouse wheel scrolling.
+- Includes a compact mode for displaying only relevant key combinations.
+- Provides KDE/Plasma integration through a system tray icon.
+- Includes optional KWin integration.
 
 ## Project status
 
@@ -41,16 +40,16 @@ KDE KeyCast currently provides CMake-based installation and an AppImage build, i
 
 KDE KeyCast requires the following development dependencies:
 
-* CMake
-* A C/C++ compiler with C++17 support
-* Extra CMake Modules (ECM)
-* pkg-config
-* Qt 6
-* libxkbcommon
-* Wayland
-* libinput
-* libudev
-* libevdev
+- CMake
+- A C/C++ compiler with C++17 support
+- Extra CMake Modules (ECM)
+- pkg-config
+- Qt 6
+- libxkbcommon
+- Wayland
+- libinput
+- libudev
+- libevdev
 
 The project does **not** require an external installation of `showmethekey-cli`.
 
@@ -60,12 +59,12 @@ The ShowMeTheKey backend used by KDE KeyCast is included in the project and comp
 
 Once installed, KDE KeyCast uses the corresponding runtime libraries for:
 
-* Qt 6
-* libxkbcommon
-* Wayland
-* libinput
-* libudev
-* libevdev
+- Qt 6
+- libxkbcommon
+- Wayland
+- libinput
+- libudev
+- libevdev
 
 These libraries are normally provided by a modern Linux distribution running KDE Plasma.
 
@@ -121,9 +120,9 @@ Without the required permissions, KDE KeyCast may start normally but will not di
 
 KWin integration requires the following KDE tools:
 
-* `kpackagetool6`
-* `kwriteconfig6`
-* `qdbus6`
+- `kpackagetool6`
+- `kwriteconfig6`
+- `qdbus6`
 
 These tools are not required to run KDE KeyCast normally.
 
@@ -192,10 +191,11 @@ The installation includes KDE KeyCast, the bundled ShowMeTheKey backend, the des
 
 It also installs the following helper scripts:
 
-* `install-kde-keycast`
-* `uninstall-kde-keycast`
-* `install-kwin-kde-keycast`
-* `uninstall-kwin-kde-keycast`
+- `uninstall-kde-keycast`
+- `install-kwin-kde-keycast`
+- `uninstall-kwin-kde-keycast`
+- `configure-kde-keycast-permissions`
+- `remove-kde-keycast-permissions`
 
 KWin integration is optional and is not installed or enabled automatically by the CMake installation. It can be installed later from KDE KeyCast or with the dedicated `install-kwin-kde-keycast` helper.
 
@@ -251,14 +251,13 @@ To remove the AppImage application integration:
 ./kde-keycast-x86_64.AppImage --uninstall
 ```
 
-The AppImage uninstall operation also removes the KDE KeyCast KWin integration if it is installed.
+The AppImage uninstall operation also removes KWin integration if installed, unless a valid native KDE KeyCast installation is detected.
 
 ## Distribution-specific dependencies
 
 ### Debian / Ubuntu
 
 The required packages are listed in the [Debian / Ubuntu / Kubuntu](#debian--ubuntu--kubuntu) section above.
-
 
 ### Fedora
 
@@ -336,7 +335,6 @@ Fedora provides the Qt 6 D-Bus utility as `qdbus-qt6` rather than `qdbus6`. KDE 
 
 Package names may vary between Fedora releases.
 
-
 ### Arch Linux and EndeavourOS
 
 KDE KeyCast has been tested successfully on **EndeavourOS KDE Plasma (Wayland)**, an Arch Linux-based distribution.
@@ -377,10 +375,10 @@ sudo cmake --install build
 
 KDE KeyCast has currently been tested successfully on:
 
-* **KDE neon** — KDE Plasma on Wayland
-* **Kubuntu 26.04.1 LTS** — KDE Plasma 6.6.6 on Wayland
-* **Fedora 44 KDE** — KDE Plasma 6.7.5 on Wayland
-* **EndeavourOS KDE** — KDE Plasma on Wayland
+- **KDE neon** — KDE Plasma on Wayland
+- **Kubuntu 26.04.1 LTS** — KDE Plasma 6.6.6 on Wayland
+- **Fedora 44 KDE** — KDE Plasma 6.7.5 on Wayland
+- **EndeavourOS KDE** — KDE Plasma on Wayland
 
 Additional distributions will be added here as they are tested on clean installations.
 
@@ -389,7 +387,7 @@ Additional distributions will be added here as they are tested on clean installa
 KDE KeyCast includes a script for optionally installing its KWin integration:
 
 ```text
-install-kde-keycast
+install-kwin-kde-keycast
 ```
 
 KWin integration is not enabled automatically when KDE KeyCast is installed.
@@ -416,7 +414,8 @@ To install the AppImage for the current user:
 ./dist/kde-keycast-x86_64.AppImage --install
 ```
 
-This creates the user's desktop launcher and icon files and installs and enables the optional KDE KeyCast KWin integration.
+This creates the user's desktop launcher and icon files.
+KWin integration is optional and is not installed or enabled automatically by the AppImage installation.
 
 To remove the AppImage installation:
 
@@ -424,7 +423,7 @@ To remove the AppImage installation:
 ./dist/kde-keycast-x86_64.AppImage --uninstall
 ```
 
-This removes the AppImage-installed launcher, icons, and KWin integration. User configuration is preserved.
+The AppImage uninstall operation also removes KWin integration if installed, unless a valid native KDE KeyCast installation is detected.
 
 Detailed instructions for building the AppImage are available in:
 
