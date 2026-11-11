@@ -5,6 +5,12 @@
 <p align="center"> Visual keyboard and mouse indicator for Linux/KDE, designed especially for presentations, tutorials, and screencasts. </p>
 
 <p align="center">
+  <a href="https://github.com/hgmarcury/kde-keycast/releases/latest">
+    <strong>Download KDE KeyCast – Latest Release</strong>
+  </a>
+</p>
+
+<p align="center">
   <img src="resources/screenshots/kde-keycast-demo.gif" alt="KDE KeyCast demonstration" width="800">
 </p>
 
