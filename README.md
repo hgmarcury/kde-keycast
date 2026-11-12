@@ -11,6 +11,12 @@
 </p>
 
 <p align="center">
+  <a href="https://hgmarcury.github.io/kde-keycast-site/">
+    Official Website
+  </a>
+</p>
+
+<p align="center">
   <img src="resources/screenshots/kde-keycast-demo.gif" alt="KDE KeyCast demonstration" width="800">
 </p>
 
