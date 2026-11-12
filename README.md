@@ -486,6 +486,12 @@ For significant changes, opening a discussion or issue before implementation is 
 
 Every contribution, suggestion and report is appreciated. Thank you for helping improve KDE KeyCast!
 
+## Support the Project
+
+If you find KDE KeyCast useful, you can support its continued development with a voluntary contribution on [Buy Me a Coffee](https://buymeacoffee.com/hgmarcury).
+
+Your support is greatly appreciated and helps keep the project going. Thank you!
+
 ## Project
 
 KDE KeyCast is developed as an independent project for Linux/KDE.
