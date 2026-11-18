@@ -320,7 +320,7 @@ Item {
 
     ShortcutHandler {
         name: "kde-keycast-toggle-keep-above"
-        text: "KDE KeyCast: Toggle Always on Top"
+        text: i18n("KDE KeyCast: Toggle Always on Top")
         sequence: "Ctrl+Alt+Shift+T"
 
         onActivated: {

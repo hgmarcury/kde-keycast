@@ -13,6 +13,7 @@
         "Version": "1.0",
         "License": "GPLv3"
     },
+    "X-KWin-Config-TranslationDomain": "kde-keycast",
     "X-Plasma-API": "declarativescript",
     "X-Plasma-MainScript": "ui/main.qml"
 }

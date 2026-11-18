@@ -6,6 +6,7 @@
 #include "StatusToast.h"
 
 #include <QApplication>
+#include <QCoreApplication>
 #include <QFont>
 #include <QFontMetrics>
 #include <QList>
@@ -608,9 +609,7 @@ void StatusToast::showInstalling(QWidget *parent)
 {
     showToast(
         parent,
-        QStringLiteral(
-            "Installing KWin integration…"
-        ),
+        QCoreApplication::translate("StatusToast", "Installing KWin integration…"),
         ToastOperation::Installing,
         900
     );
@@ -620,9 +619,7 @@ void StatusToast::showEnabling(QWidget *parent)
 {
     showToast(
         parent,
-        QStringLiteral(
-            "Enabling KWin integration…"
-        ),
+        QCoreApplication::translate("StatusToast", "Enabling KWin integration…"),
         ToastOperation::Enabling,
         900
     );
@@ -633,9 +630,7 @@ void StatusToast::showDisabling(QWidget *parent)
 {
     showToast(
         parent,
-        QStringLiteral(
-            "Disabling KWin integration…"
-        ),
+        QCoreApplication::translate("StatusToast", "Disabling KWin integration…"),
         ToastOperation::Enabling,
         900
     );
@@ -646,9 +641,7 @@ void StatusToast::showUninstalling(QWidget *parent)
 {
     showToast(
         parent,
-        QStringLiteral(
-            "Uninstalling KWin integration…"
-        ),
+        QCoreApplication::translate("StatusToast", "Uninstalling KWin integration…"),
         ToastOperation::Uninstalling,
         900
     );
@@ -658,9 +651,7 @@ void StatusToast::showInstalled(QWidget *parent)
 {
     showToast(
         parent,
-        QStringLiteral(
-            "✓ KWin integration installed"
-        ),
+        QCoreApplication::translate("StatusToast", "✓ KWin integration installed"),
         ToastOperation::Independent,
         1800,
         700,
@@ -673,9 +664,7 @@ void StatusToast::showEnabled(QWidget *parent)
 {
     showToast(
         parent,
-        QStringLiteral(
-            "✓ KWin integration enabled"
-        ),
+        QCoreApplication::translate("StatusToast", "✓ KWin integration enabled"),
         ToastOperation::Independent,
         1800,
         700,
@@ -688,9 +677,7 @@ void StatusToast::showDisabled(QWidget *parent)
 {
     showToast(
         parent,
-        QStringLiteral(
-            "✓ KWin integration disabled"
-        ),
+        QCoreApplication::translate("StatusToast", "✓ KWin integration disabled"),
         ToastOperation::Independent,
         1800,
         700,
@@ -703,9 +690,7 @@ void StatusToast::showUninstalled(QWidget *parent)
 {
     showToast(
         parent,
-        QStringLiteral(
-            "✓ KWin integration uninstalled"
-        ),
+        QCoreApplication::translate("StatusToast", "✓ KWin integration uninstalled"),
         ToastOperation::Independent,
         1800,
         700,
@@ -720,9 +705,8 @@ void StatusToast::showFailed(
 )
 {
     const QString text =
-        QStringLiteral(
-            "✕ KWin integration failed\n%1"
-        ).arg(error);
+        QCoreApplication::translate("StatusToast", "✕ KWin integration failed\n%1")
+        .arg(error);
 
     showToast(
         parent,
@@ -742,9 +726,8 @@ void StatusToast::showInputError(
 {
     showToast(
         parent,
-        QStringLiteral(
-            "Keyboard and mouse input unavailable\n%1"
-        ).arg(error),
+        QCoreApplication::translate("StatusToast", "Keyboard and mouse input unavailable\n%1")
+        .arg(error),
         ToastOperation::Independent,
         4000,
         0,

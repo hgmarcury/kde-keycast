@@ -45,20 +45,21 @@ QString currentUserName()
 PermissionsDialog::PermissionsDialog(QWidget *parent)
     : QDialog(parent)
 {
-    setWindowTitle(QStringLiteral("Permisos de entrada — KDE KeyCast"));
+    setWindowTitle(QCoreApplication::translate("PermissionsDialog", "Input permissions — KDE KeyCast"));
     setModal(true);
     resize(520, 400);
 
     auto *layout = new QVBoxLayout(this);
 
     auto *description = new QLabel(
-        QStringLiteral(
-            "KDE KeyCast necesita acceder a eventos del teclado y del ratón "
-            "para mostrar las pulsaciones.\n\n"
-            "Puedes configurar permisos mediante Polkit para permitir que "
-            "el backend incluido se ejecute sin solicitar la contraseña "
-            "repetidamente. Esto concede acceso a eventos de entrada; "
-            "configúralo solo si confías en la aplicación."
+        QCoreApplication::translate(
+            "PermissionsDialog",
+            "KDE KeyCast needs access to keyboard and mouse events "
+            "to display input.\n\n"
+            "You can configure permissions through Polkit to allow "
+            "the bundled backend to run without repeatedly asking "
+            "for your password. This grants access to input events; "
+            "only configure it if you trust the application."
         ),
         this
     );
@@ -66,7 +67,7 @@ PermissionsDialog::PermissionsDialog(QWidget *parent)
     layout->addWidget(description);
 
     auto *statusGroup = new QGroupBox(
-        QStringLiteral("Estado de los permisos"),
+        QCoreApplication::translate("PermissionsDialog", "Permission status"),
         this
     );
     auto *statusLayout = new QVBoxLayout(statusGroup);
@@ -80,7 +81,7 @@ PermissionsDialog::PermissionsDialog(QWidget *parent)
     m_output = new QPlainTextEdit(this);
     m_output->setReadOnly(true);
     m_output->setPlaceholderText(
-        QStringLiteral("Aquí aparecerán los resultados de las operaciones.")
+        QCoreApplication::translate("PermissionsDialog", "Operation results will appear here.")
     );
     m_output->setMaximumBlockCount(500);
     layout->addWidget(m_output, 1);
@@ -88,15 +89,15 @@ PermissionsDialog::PermissionsDialog(QWidget *parent)
     auto *buttonsLayout = new QHBoxLayout();
 
     m_configureButton = new QPushButton(
-        QStringLiteral("Configurar permisos…"),
+        QCoreApplication::translate("PermissionsDialog", "Configure permissions…"),
         this
     );
     m_removeButton = new QPushButton(
-        QStringLiteral("Retirar permisos…"),
+        QCoreApplication::translate("PermissionsDialog", "Remove permissions…"),
         this
     );
     auto *closeButton = new QPushButton(
-        QStringLiteral("Cerrar"),
+        QCoreApplication::translate("PermissionsDialog", "Close"),
         this
     );
 
@@ -168,21 +169,23 @@ void PermissionsDialog::refreshStatus()
 
     if (configured && groupExists && userInGroup) {
         m_statusLabel->setText(
-            QStringLiteral(
-                "La configuración de permisos está registrada y tu sesión "
-                "pertenece al grupo kde-keycast."
+            QCoreApplication::translate(
+                "PermissionsDialog",
+                "Permission configuration is registered and your session "
+                "belongs to the kde-keycast group."
             )
         );
     } else if (!configured && !groupExists) {
         m_statusLabel->setText(
-            QStringLiteral("No se detecta una configuración de permisos.")
+            QCoreApplication::translate("PermissionsDialog", "No permission configuration was detected.")
         );
     } else {
         m_statusLabel->setText(
-            QStringLiteral(
-                "La configuración parece incompleta o no puede verificarse "
-                "por completo. Puedes volver a ejecutar la configuración "
-                "para comprobarla."
+            QCoreApplication::translate(
+                "PermissionsDialog",
+                "The configuration appears to be incomplete or cannot be "
+                "fully verified. You can run the configuration again "
+                "to check it."
             )
         );
     }
@@ -199,21 +202,22 @@ void PermissionsDialog::configurePermissions()
         QMessageBox::critical(
             this,
             QStringLiteral("KDE KeyCast"),
-            QStringLiteral("No se ha podido determinar el usuario actual.")
+            QCoreApplication::translate("PermissionsDialog", "Could not determine the current user.")
         );
         return;
     }
 
     const auto answer = QMessageBox::question(
         this,
-        QStringLiteral("Configurar permisos"),
-        QStringLiteral(
-            "Se configurará Polkit y se añadirá el usuario actual al grupo "
-            "kde-keycast para permitir el acceso al backend de teclado y "
-            "ratón sin solicitar la contraseña repetidamente.\n\n"
-            "Es posible que tengas que cerrar la sesión y volver a entrar "
-            "para que el nuevo grupo se aplique.\n\n"
-            "¿Quieres continuar?"
+        QCoreApplication::translate("PermissionsDialog", "Configure permissions"),
+        QCoreApplication::translate(
+            "PermissionsDialog",
+            "Polkit will be configured and the current user will be added "
+            "to the kde-keycast group to allow access to the keyboard and "
+            "mouse backend without repeatedly asking for the password.\n\n"
+            "You may need to log out and back in for the new group "
+            "to take effect.\n\n"
+            "Do you want to continue?"
         ),
         QMessageBox::Yes | QMessageBox::No,
         QMessageBox::No
@@ -233,13 +237,14 @@ void PermissionsDialog::removePermissions()
 {
     const auto answer = QMessageBox::question(
         this,
-        QStringLiteral("Retirar permisos"),
-        QStringLiteral(
-            "Se intentará retirar la regla de Polkit y los permisos "
-            "registrados por KDE KeyCast.\n\n"
-            "Puede que tengas que cerrar la sesión y volver a entrar para "
-            "que los cambios de grupo se reflejen en tu sesión.\n\n"
-            "¿Quieres continuar?"
+        QCoreApplication::translate("PermissionsDialog", "Remove permissions"),
+        QCoreApplication::translate(
+            "PermissionsDialog",
+            "The Polkit rule and permissions registered by KDE KeyCast "
+            "will be removed.\n\n"
+            "You may need to log out and back in for the group changes "
+            "to take effect in your session.\n\n"
+            "Do you want to continue?"
         ),
         QMessageBox::Yes | QMessageBox::No,
         QMessageBox::No
@@ -270,8 +275,9 @@ void PermissionsDialog::startPermissionProcess(
         QMessageBox::critical(
             this,
             QStringLiteral("KDE KeyCast"),
-            QStringLiteral(
-                "No se encuentra el script ejecutable:\n%1"
+            QCoreApplication::translate(
+                "PermissionsDialog",
+                "Executable script not found:\n%1"
             ).arg(scriptPath)
         );
         return;
@@ -284,8 +290,9 @@ void PermissionsDialog::startPermissionProcess(
         QMessageBox::critical(
             this,
             QStringLiteral("KDE KeyCast"),
-            QStringLiteral(
-                "No se encuentra pkexec. Comprueba que Polkit esté instalado."
+            QCoreApplication::translate(
+                "PermissionsDialog",
+                "pkexec was not found. Check that Polkit is installed."
             )
         );
         return;
@@ -293,7 +300,7 @@ void PermissionsDialog::startPermissionProcess(
 
     m_output->clear();
     m_output->appendPlainText(
-        QStringLiteral("Ejecutando: %1").arg(scriptName)
+        QCoreApplication::translate("PermissionsDialog", "Running: %1").arg(scriptName)
     );
 
     m_process = new QProcess(this);
@@ -327,7 +334,7 @@ void PermissionsDialog::startPermissionProcess(
         [this](QProcess::ProcessError error) {
             if (error == QProcess::FailedToStart) {
                 m_output->appendPlainText(
-                    QStringLiteral("No se pudo iniciar pkexec: %1")
+                    QCoreApplication::translate("PermissionsDialog", "Could not start pkexec: %1")
                         .arg(m_process->errorString())
                 );
                 m_process->deleteLater();
@@ -344,10 +351,11 @@ void PermissionsDialog::startPermissionProcess(
         [this](int exitCode, QProcess::ExitStatus exitStatus) {
             m_output->appendPlainText(
                 exitStatus == QProcess::NormalExit && exitCode == 0
-                    ? QStringLiteral("\nOperación completada.")
-                    : QStringLiteral(
-                          "\nLa operación no terminó correctamente "
-                          "(código %1)."
+                    ? QCoreApplication::translate("PermissionsDialog", "\nOperation completed.")
+                    : QCoreApplication::translate(
+                          "PermissionsDialog",
+                          "\nThe operation did not complete successfully "
+                          "(exit code %1)."
                       ).arg(exitCode)
             );
 

@@ -3,145 +3,80 @@
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
-
 #include "ShortcutHelpDialog.h"
 
 #include "../core/Shortcuts.h"
 
+#include <QCoreApplication>
 #include <QDialog>
 #include <QHBoxLayout>
 #include <QLabel>
 #include <QPushButton>
 #include <QVBoxLayout>
 
-ShortcutHelpDialog::ShortcutHelpDialog(
-    QWidget *parent
-)
-    : QDialog(parent)
-{
-    setWindowTitle(
-        QStringLiteral("Keyboard shortcuts")
-    );
+ShortcutHelpDialog::ShortcutHelpDialog(QWidget *parent) : QDialog(parent) {
+  setWindowTitle(
+      QCoreApplication::translate("ShortcutHelpDialog", "Keyboard shortcuts"));
 
-    setModal(true);
-    setFixedWidth(360);
+  setModal(true);
+  setFixedWidth(360);
 
-    auto *layout =
-        new QVBoxLayout(this);
+  auto *layout = new QVBoxLayout(this);
 
-    layout->setContentsMargins(
-        20,
-        18,
-        20,
-        18
-    );
+  layout->setContentsMargins(20, 18, 20, 18);
 
-    layout->setSpacing(8);
+  layout->setSpacing(8);
 
-    auto addShortcut =
-        [this, layout](
-            const QString &shortcut,
-            const QString &description)
-    {
-        auto *row =
-            new QHBoxLayout();
+  auto addShortcut = [this, layout](const QString &shortcut,
+                                    const QString &description) {
+    auto *row = new QHBoxLayout();
 
-        row->setSpacing(16);
+    row->setSpacing(16);
 
-        auto *keyLabel =
-            new QLabel(
-                shortcut,
-                this
-            );
+    auto *keyLabel = new QLabel(shortcut, this);
 
-        auto *descriptionLabel =
-            new QLabel(
-                description,
-                this
-            );
+    auto *descriptionLabel = new QLabel(description, this);
 
-        keyLabel->setMinimumWidth(110);
+    keyLabel->setMinimumWidth(110);
 
-        keyLabel->setAlignment(
-            Qt::AlignLeft |
-            Qt::AlignVCenter
-        );
+    keyLabel->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
 
-        keyLabel->setStyleSheet(
-            QStringLiteral(
-                "font-weight: 600;"
-            )
-        );
+    keyLabel->setStyleSheet(QStringLiteral("font-weight: 600;"));
 
-        descriptionLabel->setAlignment(
-            Qt::AlignLeft |
-            Qt::AlignVCenter
-        );
+    descriptionLabel->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
 
-        row->addWidget(keyLabel);
-        row->addWidget(
-            descriptionLabel,
-            1
-        );
+    row->addWidget(keyLabel);
+    row->addWidget(descriptionLabel, 1);
 
-        layout->addLayout(row);
-    };
+    layout->addLayout(row);
+  };
 
-    addShortcut(
-        QString::fromLatin1(
-            KeyCastShortcuts::CompactMode
-        ),
-        QStringLiteral("Compact mode")
-    );
+  addShortcut(
+      QString::fromLatin1(KeyCastShortcuts::CompactMode),
+      QCoreApplication::translate("ShortcutHelpDialog", "Compact mode"));
 
-    addShortcut(
-        QString::fromLatin1(
-            KeyCastShortcuts::AlwaysOnTop
-        ),
-        QStringLiteral("Always on top")
-    );
+  addShortcut(
+      QString::fromLatin1(KeyCastShortcuts::AlwaysOnTop),
+      QCoreApplication::translate("ShortcutHelpDialog", "Always on top"));
 
-    addShortcut(
-        QString::fromLatin1(
-            KeyCastShortcuts::HideKeys
-        ),
-        QStringLiteral("Hide keys")
-    );
+  addShortcut(QString::fromLatin1(KeyCastShortcuts::HideKeys),
+              QCoreApplication::translate("ShortcutHelpDialog", "Hide keys"));
 
-    addShortcut(
-        QString::fromLatin1(
-            KeyCastShortcuts::ClickThrough
-        ),
-        QStringLiteral("Click-through")
-    );
+  addShortcut(
+      QString::fromLatin1(KeyCastShortcuts::ClickThrough),
+      QCoreApplication::translate("ShortcutHelpDialog", "Click-through"));
 
-    addShortcut(
-        QString::fromLatin1(
-            KeyCastShortcuts::PauseInput
-        ),
-        QStringLiteral("Pause input")
-    );
+  addShortcut(QString::fromLatin1(KeyCastShortcuts::PauseInput),
+              QCoreApplication::translate("ShortcutHelpDialog", "Pause input"));
 
-    layout->addSpacing(8);
+  layout->addSpacing(8);
 
-    auto *closeButton =
-        new QPushButton(
-            QStringLiteral("Close"),
-            this
-        );
+  auto *closeButton = new QPushButton(
+      QCoreApplication::translate("ShortcutHelpDialog", "Close"), this);
 
-    closeButton->setDefault(true);
+  closeButton->setDefault(true);
 
-    connect(
-        closeButton,
-        &QPushButton::clicked,
-        this,
-        &QDialog::accept
-    );
+  connect(closeButton, &QPushButton::clicked, this, &QDialog::accept);
 
-    layout->addWidget(
-        closeButton,
-        0,
-        Qt::AlignRight
-    );
+  layout->addWidget(closeButton, 0, Qt::AlignRight);
 }

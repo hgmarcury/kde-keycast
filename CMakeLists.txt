@@ -26,6 +26,7 @@ find_package(Qt6 REQUIRED COMPONENTS
     Widgets
     DBus
     Core
+    LinguistTools
 )
 
 find_package(PkgConfig REQUIRED)
@@ -336,3 +337,17 @@ install(CODE "
         message(FATAL_ERROR \"No se pudo completar la limpieza de la integración AppImage.\")
     endif()
 ")
+
+# Qt Linguist translations
+qt6_add_translations(kde-keycast
+    TS_FILES
+        ${CMAKE_CURRENT_SOURCE_DIR}/translations/kde-keycast_es.ts
+    QM_FILES_OUTPUT_VARIABLE KDE_KEYCAST_QM_FILES
+    QM_OUTPUT_DIRECTORY
+        ${CMAKE_CURRENT_BINARY_DIR}/translations
+)
+
+install(
+    FILES ${KDE_KEYCAST_QM_FILES}
+    DESTINATION ${CMAKE_INSTALL_DATAROOTDIR}/kde-keycast/translations
+)

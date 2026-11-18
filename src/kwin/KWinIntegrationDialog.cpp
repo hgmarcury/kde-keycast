@@ -7,6 +7,7 @@
 
 #include <QMessageBox>
 #include <QCheckBox>
+#include <QCoreApplication>
 
 namespace KDEKeyCast {
 
@@ -19,17 +20,19 @@ KWinIntegrationDialog::Result KWinIntegrationDialog::askInstall()
     );
 
     messageBox.setText(
-        QStringLiteral(
-            "¿Quieres instalar la integración con KWin?"
+        QCoreApplication::translate(
+            "KWinIntegrationDialog",
+            "Do you want to install the KWin integration?"
         )
     );
 
     messageBox.setInformativeText(
-        QStringLiteral(
-            "La integración permite que KDE KeyCast gestione "
-            "automáticamente la ventana en KDE Plasma.\n\n"
-            "Podrá mantener la ventana siempre visible y recordar "
-            "su posición al volver a iniciar KDE KeyCast."
+        QCoreApplication::translate(
+            "KWinIntegrationDialog",
+            "The integration allows KDE KeyCast to manage its window "
+            "automatically in KDE Plasma.\n\n"
+            "It can keep the window always on top and remember "
+            "its position when KDE KeyCast is launched again."
         )
     );
 
@@ -44,7 +47,10 @@ KWinIntegrationDialog::Result KWinIntegrationDialog::askInstall()
 
     QCheckBox *dontShowAgain =
         new QCheckBox(
-            QStringLiteral("No volver a mostrar"),
+            QCoreApplication::translate(
+                "KWinIntegrationDialog",
+                "Do not show again"
+            ),
             &messageBox
         );
 
@@ -68,8 +74,9 @@ bool KWinIntegrationDialog::confirmUninstall(QWidget *parent)
         QMessageBox::question(
             parent,
             QStringLiteral("KDE KeyCast"),
-            QStringLiteral(
-                "¿Quieres desinstalar la integración con KWin?"
+            QCoreApplication::translate(
+                "KWinIntegrationDialog",
+                "Do you want to uninstall the KWin integration?"
             ),
             QMessageBox::Yes |
             QMessageBox::No,
@@ -84,8 +91,9 @@ void KWinIntegrationDialog::showError()
     QMessageBox::critical(
         nullptr,
         QStringLiteral("KDE KeyCast"),
-        QStringLiteral(
-            "No se ha podido modificar la integración con KWin."
+        QCoreApplication::translate(
+            "KWinIntegrationDialog",
+            "Could not modify the KWin integration."
         )
     );
 }

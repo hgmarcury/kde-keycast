@@ -194,8 +194,9 @@ bool KWinIntegration::install(QString *errorMessage)
     if (!process.waitForFinished(30000)) {
         if (errorMessage) {
             *errorMessage =
-                QStringLiteral(
-                    "La instalación ha tardado demasiado."
+                QCoreApplication::translate(
+                    "KWinIntegration",
+                    "Installation timed out."
                 );
         }
 
@@ -205,8 +206,9 @@ bool KWinIntegration::install(QString *errorMessage)
     if (process.exitStatus() != QProcess::NormalExit) {
         if (errorMessage) {
             *errorMessage =
-                QStringLiteral(
-                    "El instalador terminó de forma inesperada."
+                QCoreApplication::translate(
+                    "KWinIntegration",
+                    "The installer terminated unexpectedly."
                 );
         }
 

@@ -19,6 +19,9 @@
 // 2. LIBRERÍAS DE QT (Esto le enseña a Clangd qué es QString antes de abrir tus archivos)
 // ============================================================================
 #include <QApplication>
+#include <QCoreApplication>
+#include <QLocale>
+#include <QTranslator>
 #include <QWidget>
 #include <QPainter>
 #include <QPainterPath>
@@ -588,9 +591,13 @@ protected:
                 for (const QString &key : entry.keys) {
                     QString visualKey = key;
 
-                    if (compactMode)
+                    if (compactMode) {
                         visualKey =
                             compactDisplayName(key);
+                    } else {
+                        visualKey =
+                            translatedDisplayName(key);
+                    }
 
                     visualKeys.append(
                         visualKey
@@ -1232,7 +1239,9 @@ protected:
                                              ? compactDisplayName(
                                                  entry.keys.at(i)
                                                )
-                                             : entry.keys.at(i)
+                                             : translatedDisplayName(
+                                               entry.keys.at(i)
+                                           )
                                        );
 
                     const int textWidth =
@@ -3183,6 +3192,25 @@ private:
 }
 
 
+    QString translatedDisplayName(
+        const QString &name
+    ) const
+    {
+        static const QHash<QString, QString> map = {
+            {"Mouse Wheel Up", tr("Mouse wheel ↑")},
+            {"Mouse Wheel Down", tr("Mouse wheel ↓")},
+            {"Mouse Wheel Left", tr("Mouse wheel ←")},
+            {"Mouse Wheel Right", tr("Mouse wheel →")},
+            {"Wheel ↑", tr("Wheel ↑")},
+            {"Wheel ↓", tr("Wheel ↓")},
+            {"Wheel ←", tr("Wheel ←")},
+            {"Wheel →", tr("Wheel →")}
+        };
+
+        return map.value(name, name);
+    }
+
+
     /*
      * ---------------------------------------------------------------
      * Wayland keyboard
@@ -4735,7 +4763,7 @@ void addKeyboardVisualEntry(
 
                auto *label =
                    new QLabel(
-                       QStringLiteral("Display duration"),
+                       tr("Display duration"),
                        container
                    );
 
@@ -5518,9 +5546,7 @@ void KeyCast::contextMenuEvent(
             } else {
                 KDEKeyCast::StatusToast::showFailed(
                     this,
-                    QStringLiteral(
-                        "No se pudo desinstalar la integración."
-                    )
+                    tr("Could not uninstall the integration.")
                 );
             }
         }
@@ -5544,9 +5570,7 @@ void KeyCast::contextMenuEvent(
             } else {
                 KDEKeyCast::StatusToast::showFailed(
                     this,
-                    QStringLiteral(
-                        "No se pudo desactivar la integración."
-                    )
+                    tr("Could not disable the integration.")
                 );
             }
         } else {
@@ -5560,9 +5584,7 @@ void KeyCast::contextMenuEvent(
             } else {
                 KDEKeyCast::StatusToast::showFailed(
                     this,
-                    QStringLiteral(
-                        "No se pudo activar la integración."
-                    )
+                    tr("Could not enable the integration.")
                 );
             }
         }
@@ -5616,6 +5638,32 @@ void KeyCast::contextMenuEvent(
 int main(int argc, char **argv)
 {
     QApplication app(argc, argv);
+
+    QTranslator translator;
+
+    const QString installedTranslationsPath =
+        QDir(QCoreApplication::applicationDirPath())
+            .filePath("../share/kde-keycast/translations");
+
+    const QString developmentTranslationsPath =
+        QDir(QCoreApplication::applicationDirPath())
+            .filePath("translations");
+
+    if (translator.load(
+            QLocale::system(),
+            "kde-keycast",
+            "_",
+            installedTranslationsPath
+        ) ||
+        translator.load(
+            QLocale::system(),
+            "kde-keycast",
+            "_",
+            developmentTranslationsPath
+        )) {
+        app.installTranslator(&translator);
+    }
+
     app.setQuitOnLastWindowClosed(false);
 
     app.setApplicationName(
