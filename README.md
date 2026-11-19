@@ -34,17 +34,18 @@ KDE KeyCast displays pressed keys and key combinations visually, using XKB to co
 - Displays combinations involving `Ctrl`, `Alt`, `AltGr`, `Meta`, and `Shift` when appropriate.
 - Represents special keys using appropriate names or symbols.
 - Detects and displays mouse events, including mouse wheel scrolling.
+- Automatically detects the system language, with Spanish translation and English fallback.
 - Includes a compact mode for displaying only relevant key combinations.
 - Provides KDE/Plasma integration through a system tray icon.
 - Includes optional KWin integration.
 
 ## Project status
 
-KDE KeyCast is currently under development.
+KDE KeyCast is actively developed and distributed through GitHub.
 
-The main codebase has been reorganized into independent components to make the project easier to maintain and extend.
+The project is organized into independent components to make the codebase easier to maintain and extend.
 
-KDE KeyCast currently provides CMake-based installation and an AppImage build, including optional KWin integration.
+KDE KeyCast provides CMake-based installation and an AppImage build, including optional KWin integration. Its interface automatically follows the system language, with Spanish available and English as the fallback.
 
 ## Dependencies
 

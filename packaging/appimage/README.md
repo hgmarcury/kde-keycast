@@ -13,9 +13,12 @@ The AppImage bundles the components required to run KDE KeyCast independently fr
 * Qt platform and Wayland integration components
 * KDE KeyCast desktop integration files
 * KDE KeyCast icons
-* KWin integration files
+* Qt interface translation catalogs
+* KWin integration files and their translation catalog
 
 The bundled `showmethekey-cli` backend is always used. KDE KeyCast does not fall back to an externally installed `showmethekey-cli`.
+
+The AppImage includes the Qt translation catalog for the application interface and the Gettext catalog for the KWin integration. The application automatically detects the system language; Spanish is currently available, with English as the fallback.
 
 ## Building
 
