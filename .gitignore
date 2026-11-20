@@ -54,3 +54,9 @@ CMakeLists.txt.*
 
 /packaging/appimage/tools/
 /dist/
+
+# ============================================================
+# KWin cursor effect - local versioned binaries
+# ============================================================
+
+/kwin/effects/kde-keycast-cursor/versions/

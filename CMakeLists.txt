@@ -9,10 +9,17 @@ project(kde-keycast
   LANGUAGES C CXX
 )
 
+# KDE KeyCast uses Qt 6 exclusively.
+set(QT_MAJOR_VERSION 6)
+
 find_package(ECM REQUIRED NO_MODULE)
 set(CMAKE_MODULE_PATH ${ECM_MODULE_PATH})
 
 include(KDEInstallDirs)
+
+set(KDE_KEYCAST_KWIN_EFFECT_DIR
+    "${KDE_INSTALL_FULL_PLUGINDIR}/kwin/effects/plugins"
+)
 
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 set(CMAKE_CXX_STANDARD 17)
@@ -72,6 +79,16 @@ pkg_check_modules(WAYLAND REQUIRED
     wayland-client
 )
 
+# Optional native KWin cursor effect
+find_package(KWin QUIET)
+
+if(KWin_FOUND)
+    message(STATUS "KWin development files found: building cursor effect")
+    add_subdirectory(kwin/effects/kde-keycast-cursor)
+else()
+    message(STATUS "KWin development files not found: skipping cursor effect")
+endif()
+
 add_executable(kde-keycast
     main.cpp
     resources.qrc
@@ -114,6 +131,8 @@ add_executable(kde-keycast
     src/kwin/KWinIntegration.cpp
     src/kwin/KWinIntegrationDialog.h
     src/kwin/KWinIntegrationDialog.cpp
+    src/kwin/MouseEffect.h
+    src/kwin/MouseEffect.cpp
 
     src/permissions/PermissionsDialog.h
     src/permissions/PermissionsDialog.cpp

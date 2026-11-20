@@ -34,7 +34,12 @@
             <location filename="../src/ui/ContextMenu.cpp" line="115" />
             <source>Light mode</source>
             <translation>Modo claro</translation>
-        </message>
+                </message>
+                <message>
+                    <location filename="../src/ui/ContextMenu.cpp" line="118" />
+                    <source>Show mouse</source>
+                    <translation>Mostrar cursor</translation>
+                </message>
         <message>
             <location filename="../src/ui/ContextMenu.cpp" line="121" />
             <source>Hide keys</source>

@@ -14,6 +14,7 @@ PREFIX="$(cd "$SCRIPT_DIR/.." && pwd)"
 BINDIR="$SCRIPT_DIR"
 DATADIR="$PREFIX/@CMAKE_INSTALL_DATAROOTDIR@"
 LIBEXECDIR="$PREFIX/@CMAKE_INSTALL_LIBEXECDIR@"
+KWIN_EFFECT_DIR="@KDE_KEYCAST_KWIN_EFFECT_DIR@"
 
 USER_DATA_DIR=""
 
@@ -107,6 +108,7 @@ fi
 echo "==> Removing KDE KeyCast files..."
 
 rm -f \
+    "$KWIN_EFFECT_DIR/libkde-keycast-cursor.so" \
     "$BINDIR/kde-keycast" \
     "$BINDIR/install-kwin-kde-keycast" \
     "$BINDIR/uninstall-kwin-kde-keycast" \

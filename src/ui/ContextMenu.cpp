@@ -117,6 +117,14 @@ void ContextMenu::exec(QWidget *parent, const QPoint &globalPos,
                     if (callback)
                       callback();
                   });
+  if (state.mouseEffectSupported) {
+    addSwitchAction(
+        menu, QCoreApplication::translate("ContextMenu", "Show mouse"),
+        state.mouseEffectEnabled, [callback = actions.toggleMouseEffect](bool) {
+          if (callback)
+            callback();
+        });
+  }
 
   addSwitchAction(menu, QCoreApplication::translate("ContextMenu", "Hide keys"),
                   state.hideKeys, [callback = actions.toggleHideKeys](bool) {

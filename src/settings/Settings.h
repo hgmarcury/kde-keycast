@@ -3,7 +3,6 @@
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
-
 #pragma once
 
 #include <QString>
@@ -11,41 +10,41 @@
 
 namespace KDEKeyCast {
 
-class Settings
-{
+class Settings {
 public:
-    Settings();
+  Settings();
 
-    bool compactMode() const;
-    void setCompactMode(bool value);
+  bool compactMode() const;
+  void setCompactMode(bool value);
 
-    bool alwaysOnTop() const;
-    void setAlwaysOnTop(bool value);
+  bool alwaysOnTop() const;
+  void setAlwaysOnTop(bool value);
 
-    qint64 displayDurationMs() const;
-    void setDisplayDurationMs(qint64 value);
+  qint64 displayDurationMs() const;
+  void setDisplayDurationMs(qint64 value);
 
-    bool lightMode() const;
-    void setLightMode(bool value);
+  bool lightMode() const;
+  void setLightMode(bool value);
 
-    bool hideKeys() const;
-    void setHideKeys(bool value);
+  bool hideKeys() const;
+  void setHideKeys(bool value);
 
-    bool onlyShortcuts() const;
-    void setOnlyShortcuts(bool value);
+  bool onlyShortcuts() const;
+  void setOnlyShortcuts(bool value);
 
-    bool kwinIntegrationPromptDisabled() const;
-    void setKwinIntegrationPromptDisabled(bool value);
+  bool kwinIntegrationPromptDisabled() const;
+  void setKwinIntegrationPromptDisabled(bool value);
+
+  bool mouseEffectEnabled() const;
+  void setMouseEffectEnabled(bool value);
 
 private:
-    static constexpr qint64 MinDisplayDurationMs = 500;
-    static constexpr qint64 MaxDisplayDurationMs = 5000;
+  static constexpr qint64 MinDisplayDurationMs = 500;
+  static constexpr qint64 MaxDisplayDurationMs = 5000;
 
-    QString organizationName_ =
-        QStringLiteral("KDE");
+  QString organizationName_ = QStringLiteral("KDE");
 
-    QString applicationName_ =
-        QStringLiteral("KDEKeyCast");
+  QString applicationName_ = QStringLiteral("KDEKeyCast");
 };
 
 } // namespace KDEKeyCast

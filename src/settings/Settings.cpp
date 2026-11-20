@@ -3,7 +3,6 @@
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
-
 #include "Settings.h"
 
 #include <QSettings>
@@ -12,180 +11,112 @@ namespace KDEKeyCast {
 
 namespace {
 
-QSettings createSettings()
-{
-    return QSettings(
-        QStringLiteral("KDE"),
-        QStringLiteral("KDEKeyCast")
-    );
+QSettings createSettings() {
+  return QSettings(QStringLiteral("KDE"), QStringLiteral("KDEKeyCast"));
 }
 
 } // namespace
 
 Settings::Settings() = default;
 
-bool Settings::compactMode() const
-{
-    const QSettings settings =
-        createSettings();
+bool Settings::compactMode() const {
+  const QSettings settings = createSettings();
 
-    return settings.value(
-        QStringLiteral("compactMode"),
-        false
-    ).toBool();
+  return settings.value(QStringLiteral("compactMode"), false).toBool();
 }
 
-void Settings::setCompactMode(bool value)
-{
-    QSettings settings =
-        createSettings();
+void Settings::setCompactMode(bool value) {
+  QSettings settings = createSettings();
 
-    settings.setValue(
-        QStringLiteral("compactMode"),
-        value
-    );
+  settings.setValue(QStringLiteral("compactMode"), value);
 }
 
-bool Settings::alwaysOnTop() const
-{
-    const QSettings settings =
-        createSettings();
+bool Settings::alwaysOnTop() const {
+  const QSettings settings = createSettings();
 
-    return settings.value(
-        QStringLiteral("alwaysOnTop"),
-        true
-    ).toBool();
+  return settings.value(QStringLiteral("alwaysOnTop"), true).toBool();
 }
 
-void Settings::setAlwaysOnTop(bool value)
-{
-    QSettings settings =
-        createSettings();
+void Settings::setAlwaysOnTop(bool value) {
+  QSettings settings = createSettings();
 
-    settings.setValue(
-        QStringLiteral("alwaysOnTop"),
-        value
-    );
+  settings.setValue(QStringLiteral("alwaysOnTop"), value);
 }
 
-qint64 Settings::displayDurationMs() const
-{
-    const QSettings settings =
-        createSettings();
+qint64 Settings::displayDurationMs() const {
+  const QSettings settings = createSettings();
 
-    const qint64 value =
-        settings.value(
-            QStringLiteral("displayDurationMs"),
-            1800
-        ).toLongLong();
+  const qint64 value =
+      settings.value(QStringLiteral("displayDurationMs"), 1800).toLongLong();
 
-    return qBound(
-        MinDisplayDurationMs,
-        value,
-        MaxDisplayDurationMs
-    );
+  return qBound(MinDisplayDurationMs, value, MaxDisplayDurationMs);
 }
 
-void Settings::setDisplayDurationMs(qint64 value)
-{
-    QSettings settings =
-        createSettings();
+void Settings::setDisplayDurationMs(qint64 value) {
+  QSettings settings = createSettings();
 
-    settings.setValue(
-        QStringLiteral("displayDurationMs"),
-        qBound(
-            MinDisplayDurationMs,
-            value,
-            MaxDisplayDurationMs
-        )
-    );
+  settings.setValue(QStringLiteral("displayDurationMs"),
+                    qBound(MinDisplayDurationMs, value, MaxDisplayDurationMs));
 }
 
-bool Settings::lightMode() const
-{
-    const QSettings settings =
-        createSettings();
+bool Settings::lightMode() const {
+  const QSettings settings = createSettings();
 
-    return settings.value(
-        QStringLiteral("lightMode"),
-        false
-    ).toBool();
+  return settings.value(QStringLiteral("lightMode"), false).toBool();
 }
 
-void Settings::setLightMode(bool value)
-{
-    QSettings settings =
-        createSettings();
+void Settings::setLightMode(bool value) {
+  QSettings settings = createSettings();
 
-    settings.setValue(
-        QStringLiteral("lightMode"),
-        value
-    );
+  settings.setValue(QStringLiteral("lightMode"), value);
 }
 
-bool Settings::hideKeys() const
-{
-    const QSettings settings =
-        createSettings();
+bool Settings::hideKeys() const {
+  const QSettings settings = createSettings();
 
-    return settings.value(
-        QStringLiteral("hideKeys"),
-        false
-    ).toBool();
+  return settings.value(QStringLiteral("hideKeys"), false).toBool();
 }
 
-void Settings::setHideKeys(bool value)
-{
-    QSettings settings =
-        createSettings();
+void Settings::setHideKeys(bool value) {
+  QSettings settings = createSettings();
 
-    settings.setValue(
-        QStringLiteral("hideKeys"),
-        value
-    );
+  settings.setValue(QStringLiteral("hideKeys"), value);
 }
 
-bool Settings::onlyShortcuts() const
-{
-    const QSettings settings =
-        createSettings();
+bool Settings::onlyShortcuts() const {
+  const QSettings settings = createSettings();
 
-    return settings.value(
-        QStringLiteral("onlyShortcuts"),
-        false
-    ).toBool();
+  return settings.value(QStringLiteral("onlyShortcuts"), false).toBool();
 }
 
-void Settings::setOnlyShortcuts(bool value)
-{
-    QSettings settings =
-        createSettings();
+void Settings::setOnlyShortcuts(bool value) {
+  QSettings settings = createSettings();
 
-    settings.setValue(
-        QStringLiteral("onlyShortcuts"),
-        value
-    );
+  settings.setValue(QStringLiteral("onlyShortcuts"), value);
 }
 
-bool Settings::kwinIntegrationPromptDisabled() const
-{
-    const QSettings settings =
-        createSettings();
+bool Settings::kwinIntegrationPromptDisabled() const {
+  const QSettings settings = createSettings();
 
-    return settings.value(
-        QStringLiteral("kwinIntegrationPromptDisabled"),
-        false
-    ).toBool();
+  return settings.value(QStringLiteral("kwinIntegrationPromptDisabled"), false)
+      .toBool();
 }
 
-void Settings::setKwinIntegrationPromptDisabled(bool value)
-{
-    QSettings settings =
-        createSettings();
+void Settings::setKwinIntegrationPromptDisabled(bool value) {
+  QSettings settings = createSettings();
 
-    settings.setValue(
-        QStringLiteral("kwinIntegrationPromptDisabled"),
-        value
-    );
+  settings.setValue(QStringLiteral("kwinIntegrationPromptDisabled"), value);
+}
+
+bool Settings::mouseEffectEnabled() const {
+  const QSettings settings = createSettings();
+
+  return settings.value(QStringLiteral("mouseEffectEnabled"), false).toBool();
+}
+
+void Settings::setMouseEffectEnabled(bool value) {
+  QSettings settings = createSettings();
+
+  settings.setValue(QStringLiteral("mouseEffectEnabled"), value);
 }
 } // namespace KDEKeyCast

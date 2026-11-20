@@ -3,3148 +3,2159 @@
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
-
 // ============================================================================
 // 1. LIBRERÍAS ESTÁNDAR DE C++ Y DEL SISTEMA (Linux, Wayland, XKB, etc.)
 // ============================================================================
-#include <functional>
 #include <cerrno>
 #include <cstring>
+#include <functional>
 #include <limits>
 #include <sys/mman.h>
 #include <unistd.h>
 #include <xkbcommon/xkbcommon.h>
 
 // ============================================================================
-// 2. LIBRERÍAS DE QT (Esto le enseña a Clangd qué es QString antes de abrir tus archivos)
+// 2. LIBRERÍAS DE QT (Esto le enseña a Clangd qué es QString antes de abrir tus
+// archivos)
 // ============================================================================
-#include <QApplication>
-#include <QCoreApplication>
-#include <QLocale>
-#include <QTranslator>
-#include <QWidget>
-#include <QPainter>
-#include <QPainterPath>
-#include <QTimer>
-#include <QProcess>
-#include <QDateTime>
-#include <QFont>
-#include <QFontMetrics>
-#include <QColor>
-#include <QVector>
-#include <QHash>
-#include <QSet>
-#include <QMouseEvent>
-#include <QSocketNotifier>
-#include <QDir>
-#include <QWindow>
-#include <QFile>
-#include <QRegularExpression>
-#include <QtDBus/QtDBus>
-#include <QContextMenuEvent>
-#include <QMenu>
-#include <QWidgetAction>
-#include <QHBoxLayout>
-#include <QLabel>
 #include <QAbstractButton>
+#include <QApplication>
+#include <QColor>
+#include <QContextMenuEvent>
+#include <QCoreApplication>
 #include <QDBusConnection>
 #include <QDBusMessage>
-#include <QSlider>
-#include <QIcon>
+#include <QDateTime>
+#include <QDir>
+#include <QFile>
 #include <QFileInfo>
+#include <QFont>
+#include <QFontMetrics>
+#include <QHBoxLayout>
+#include <QHash>
+#include <QIcon>
+#include <QLabel>
+#include <QLocale>
+#include <QMenu>
+#include <QMouseEvent>
+#include <QPainter>
+#include <QPainterPath>
+#include <QProcess>
+#include <QRegularExpression>
 #include <QSaveFile>
+#include <QSet>
+#include <QSlider>
+#include <QSocketNotifier>
 #include <QStandardPaths>
+#include <QTimer>
+#include <QTranslator>
+#include <QVector>
+#include <QWidget>
+#include <QWidgetAction>
+#include <QWindow>
+#include <QtDBus/QtDBus>
 
 // ============================================================================
 // 3. TUS ARCHIVOS PROPIOS (Al ir al final, ya "heredan" el conocimiento de Qt)
 // ============================================================================
-#include "src/mouse/WaylandPointer.h"
-#include "src/input/InputEvent.h"
 #include "src/core/VisualEntry.h"
-#include "src/xkb/XkbManager.h"
-#include "src/wayland/WaylandConnection.h"
-#include "src/wayland/WaylandKeyboard.h"
+#include "src/input/InputEvent.h"
 #include "src/input/ShowMeTheKeyBackend.h"
+#include "src/kwin/KWinIntegration.h"
 #include "src/kwin/KWinIntegrationDialog.h"
+#include "src/kwin/MouseEffect.h"
+#include "src/mouse/WaylandPointer.h"
+#include "src/permissions/PermissionsDialog.h"
 #include "src/settings/Settings.h"
-#include "src/ui/ShortcutHelpDialog.h"
 #include "src/ui/AboutDialog.h"
 #include "src/ui/ContextMenu.h"
-#include "src/kwin/KWinIntegration.h"
-#include "src/permissions/PermissionsDialog.h"
+#include "src/ui/ShortcutHelpDialog.h"
 #include "src/ui/StatusToast.h"
+#include "src/wayland/WaylandConnection.h"
+#include "src/wayland/WaylandKeyboard.h"
+#include "src/xkb/XkbManager.h"
 
-class KeyCast : public QWidget
-{
+class KeyCast : public QWidget {
 
-    Q_OBJECT
+  Q_OBJECT
 
-
-    Q_CLASSINFO(
-           "D-Bus Interface",
-           "org.kde.KDEKeyCast"
-       )
-
+  Q_CLASSINFO("D-Bus Interface", "org.kde.KDEKeyCast")
 
 public:
-    KeyCast()
-    {
-        setAttribute(Qt::WA_TranslucentBackground);
-        setAttribute(Qt::WA_NoSystemBackground);
-        setAttribute(Qt::WA_OpaquePaintEvent, false);
-        setAttribute(Qt::WA_TransparentForMouseEvents, false);
+  KeyCast() {
+    setAttribute(Qt::WA_TranslucentBackground);
+    setAttribute(Qt::WA_NoSystemBackground);
+    setAttribute(Qt::WA_OpaquePaintEvent, false);
+    setAttribute(Qt::WA_TransparentForMouseEvents, false);
 
-        setWindowFlags(
-            Qt::FramelessWindowHint |
-            Qt::Tool
-        );
+    setWindowFlags(Qt::FramelessWindowHint | Qt::Tool);
 
-        setWindowTitle(QStringLiteral("KDE KeyCast"));
+    setWindowTitle(QStringLiteral("KDE KeyCast"));
 
+    compactMode = settings.compactMode();
 
-        compactMode =
-            settings.compactMode();
+    alwaysOnTop = settings.alwaysOnTop();
 
-        alwaysOnTop =
-            settings.alwaysOnTop();
+    displayDurationMs = settings.displayDurationMs();
 
-        displayDurationMs =
-            settings.displayDurationMs();
+    lightMode = settings.lightMode();
 
-        lightMode =
-            settings.lightMode();
+    updateApplicationIcon();
 
-        updateApplicationIcon();
+    hideKeys = settings.hideKeys();
 
-        hideKeys =
-            settings.hideKeys();
+    onlyShortcuts = settings.onlyShortcuts();
 
-        onlyShortcuts =
-            settings.onlyShortcuts();
+    if (settings.mouseEffectEnabled()) {
+      if (KDEKeyCast::MouseEffect::isSupported()) {
+        const bool themeSynced =
+            KDEKeyCast::MouseEffect::setDarkMode(!lightMode);
 
+        const bool effectEnabled =
+            themeSynced && KDEKeyCast::MouseEffect::enable();
 
-        QDBusConnection dbus =
-            QDBusConnection::sessionBus();
-
-        if (!dbus.registerService(
-                QStringLiteral("org.kde.KDEKeyCast"))) {
-
-            qWarning()
-                << "KDE KeyCast: no se pudo registrar el servicio D-Bus";
+        if (!effectEnabled) {
+          qWarning() << "KDE KeyCast: could not restore mouse effect";
         }
+      } else {
+        qWarning() << "KDE KeyCast: mouse effect is not supported";
+      }
+    }
 
-        if (!dbus.registerObject(
-                QStringLiteral("/KDEKeyCast"),
-                this,
-                QDBusConnection::ExportScriptableSlots)) {
+    QDBusConnection dbus = QDBusConnection::sessionBus();
 
-            qWarning()
-                << "KDE KeyCast: no se pudo registrar el objeto D-Bus";
-        }
+    if (!dbus.registerService(QStringLiteral("org.kde.KDEKeyCast"))) {
 
-        const int initialWidth =
-            compactMode ? 300 : 400;
+      qWarning() << "KDE KeyCast: no se pudo registrar el servicio D-Bus";
+    }
 
-        setFixedSize(
-            initialWidth,
-            106
-        );
+    if (!dbus.registerObject(QStringLiteral("/KDEKeyCast"), this,
+                             QDBusConnection::ExportScriptableSlots)) {
 
+      qWarning() << "KDE KeyCast: no se pudo registrar el objeto D-Bus";
+    }
 
-        waylandKeyboard.setKeymapCallback(
-            [this](uint32_t format, int fd, uint32_t size) {
-                if (!WaylandKeyboard::isXkbV1Keymap(format)) {
-                    qWarning(
-                        "KDE KeyCast: formato de keymap Wayland no soportado"
-                    );
+    const int initialWidth = compactMode ? 300 : 400;
 
-                    ::close(fd);
-                    return;
-                }
+    setFixedSize(initialWidth, 106);
 
-                if (size == 0) {
-                    qWarning(
-                        "KDE KeyCast: keymap Wayland vacío"
-                    );
+    waylandKeyboard.setKeymapCallback([this](uint32_t format, int fd,
+                                             uint32_t size) {
+      if (!WaylandKeyboard::isXkbV1Keymap(format)) {
+        qWarning("KDE KeyCast: formato de keymap Wayland no soportado");
 
-                    ::close(fd);
-                    return;
-                }
+        ::close(fd);
+        return;
+      }
 
-                void *mapping =
-                    mmap(
-                        nullptr,
-                        size,
-                        PROT_READ,
-                        MAP_PRIVATE,
-                        fd,
-                        0
-                    );
+      if (size == 0) {
+        qWarning("KDE KeyCast: keymap Wayland vacío");
 
-                if (mapping == MAP_FAILED) {
-                    qWarning(
-                        "KDE KeyCast: mmap del keymap falló: %s",
-                        std::strerror(errno)
-                    );
+        ::close(fd);
+        return;
+      }
 
-                    ::close(fd);
-                    return;
-                }
+      void *mapping = mmap(nullptr, size, PROT_READ, MAP_PRIVATE, fd, 0);
 
-                if (!xkb.loadKeymap(
-                        static_cast<const char *>(mapping))) {
+      if (mapping == MAP_FAILED) {
+        qWarning("KDE KeyCast: mmap del keymap falló: %s",
+                 std::strerror(errno));
 
-                    munmap(mapping, size);
-                    ::close(fd);
+        ::close(fd);
+        return;
+      }
 
-                    qWarning()
-                        << "KDE KeyCast: no se pudo cargar el keymap XKB de Wayland";
+      if (!xkb.loadKeymap(static_cast<const char *>(mapping))) {
 
-                    return;
-                }
+        munmap(mapping, size);
+        ::close(fd);
 
-                munmap(mapping, size);
-                ::close(fd);
+        qWarning() << "KDE KeyCast: no se pudo cargar el keymap XKB de Wayland";
 
-                /*
-                 * Al cambiar el keymap debemos borrar nuestro estado físico
-                 * anterior. El siguiente evento volverá a construirlo.
-                 */
-                pressedModifiers.clear();
-                combinationActive = false;
-                currentCombination.clear();
+        return;
+      }
 
-                qDebug()
-                    << "KDE KeyCast: XKB keymap actualizado desde Wayland";
-            }
-        );
+      munmap(mapping, size);
+      ::close(fd);
 
-        waylandKeyboard.setModifiersCallback(
-            [this](
-                uint32_t modsDepressed,
-                uint32_t modsLatched,
-                uint32_t modsLocked,
-                uint32_t group
-            ) {
-                if (!xkb.isReady())
-                    return;
+      /*
+       * Al cambiar el keymap debemos borrar nuestro estado físico
+       * anterior. El siguiente evento volverá a construirlo.
+       */
+      pressedModifiers.clear();
+      combinationActive = false;
+      currentCombination.clear();
 
-                xkb.updateModifiers(
-                    modsDepressed,
-                    modsLatched,
-                    modsLocked,
-                    group
-                );
+      qDebug() << "KDE KeyCast: XKB keymap actualizado desde Wayland";
+    });
 
-                update();
-            }
-        );
+    waylandKeyboard.setModifiersCallback(
+        [this](uint32_t modsDepressed, uint32_t modsLatched,
+               uint32_t modsLocked, uint32_t group) {
+          if (!xkb.isReady())
+            return;
 
-        setupWaylandKeyboard();
+          xkb.updateModifiers(modsDepressed, modsLatched, modsLocked, group);
 
-        connect(
-            &showMeTheKeyBackend,
-            &KDEKeyCast::ShowMeTheKeyBackend::backendError,
-            this,
+          update();
+        });
+
+    setupWaylandKeyboard();
+
+    connect(&showMeTheKeyBackend,
+            &KDEKeyCast::ShowMeTheKeyBackend::backendError, this,
             [this](const QString &message) {
-                KDEKeyCast::StatusToast::showInputError(
-                    this,
-                    message
-                );
-            }
-        );
+              KDEKeyCast::StatusToast::showInputError(this, message);
+            });
 
-        showMeTheKeyBackend.start(
-            [this](const KDEKeyCast::InputEvent &event) {
+    showMeTheKeyBackend.start([this](const KDEKeyCast::InputEvent &event) {
+      if (event.isKeyboard()) {
+        handleKeyboardInputEvent(event);
+        return;
+      }
 
-                if (event.isKeyboard()) {
-                    handleKeyboardInputEvent(event);
-                    return;
-                }
+      if (event.isMouse()) {
 
-                if (event.isMouse()) {
+        if (event.isWheel()) {
+          addMouseWheel(event.keyName, event.wheelDelta);
+          return;
+        }
 
-                    if (event.isWheel()) {
-                        addMouseWheel(
-                            event.keyName,
-                            event.wheelDelta
-                        );
-                        return;
-                    }
+        if (event.action == KDEKeyCast::InputAction::Pressed) {
 
-                    if (event.action ==
-                        KDEKeyCast::InputAction::Pressed) {
+          if (!event.keyName.isEmpty())
+            addMouseButton(event.keyName);
+        }
+      }
+    });
 
-                        if (!event.keyName.isEmpty())
-                            addMouseButton(event.keyName);
-                    }
-                }
-            }
-        );
+    timer.setInterval(16);
 
-        timer.setInterval(16);
+    connect(&timer, &QTimer::timeout, this, [this] {
+      trimVisualQueue();
+      update();
+    });
 
-        connect(
-            &timer,
-            &QTimer::timeout,
-            this,
-            [this] {
+    timer.start();
 
-                trimVisualQueue();
-                update();
-            }
-        );
+    /*
+     * Sincronización del estado real de multimedia.
+     *
+     * 250 ms es suficientemente rápido para que el cambio sea
+     * prácticamente inmediato y evita hacer consultas
+     * continuamente.
+     */
+    mediaStateTimer.setInterval(250);
 
-        timer.start();
+    connect(&mediaStateTimer, &QTimer::timeout, this,
+            [this] { updateMediaState(); });
 
-        /*
-         * Sincronización del estado real de multimedia.
-         *
-         * 250 ms es suficientemente rápido para que el cambio sea
-         * prácticamente inmediato y evita hacer consultas
-         * continuamente.
-         */
-        mediaStateTimer.setInterval(250);
+    updateMediaState();
+    mediaStateTimer.start();
 
-        connect(
-            &mediaStateTimer,
-            &QTimer::timeout,
-            this,
-            [this] {
-                updateMediaState();
-            }
-        );
+    show();
+  }
 
-        updateMediaState();
-        mediaStateTimer.start();
+  ~KeyCast() {
+    waylandPointer.stop();
 
-        show();
+    settings.setCompactMode(compactMode);
 
+    settings.setAlwaysOnTop(alwaysOnTop);
+
+    settings.setDisplayDurationMs(displayDurationMs);
+
+    settings.setLightMode(lightMode);
+
+    settings.setHideKeys(hideKeys);
+
+    settings.setOnlyShortcuts(onlyShortcuts);
+
+    settings.setMouseEffectEnabled(KDEKeyCast::MouseEffect::isEnabled());
+
+    if (KDEKeyCast::MouseEffect::isEnabled()) {
+      if (!KDEKeyCast::MouseEffect::disable()) {
+        qWarning() << "KDE KeyCast: could not unload mouse effect";
+      }
     }
 
-    ~KeyCast()
-    {
-        waylandPointer.stop();
-
-        settings.setCompactMode(
-            compactMode
-        );
-
-        settings.setAlwaysOnTop(
-            alwaysOnTop
-        );
-
-        settings.setDisplayDurationMs(
-            displayDurationMs
-        );
-
-        settings.setLightMode(
-            lightMode
-        );
-
-        settings.setHideKeys(
-            hideKeys
-        );
-
-        settings.setOnlyShortcuts(
-            onlyShortcuts
-        );
-
-
-        if (waylandNotifier) {
-            delete waylandNotifier;
-            waylandNotifier = nullptr;
-        }
-
-        waylandKeyboard.stop();
-
-
-
+    if (waylandNotifier) {
+      delete waylandNotifier;
+      waylandNotifier = nullptr;
     }
-    public slots:
 
-        Q_SCRIPTABLE bool isAlwaysOnTop() const
-        {
-            return alwaysOnTop;
-        }
+    waylandKeyboard.stop();
+  }
+public slots:
 
-        Q_SCRIPTABLE void setKeepAboveState(bool state)
-        {
-            qDebug()
-                    << "KDE KeyCast: setKeepAboveState recibido ="
-                    << state;
+  Q_SCRIPTABLE bool isAlwaysOnTop() const { return alwaysOnTop; }
 
+  Q_SCRIPTABLE void setKeepAboveState(bool state) {
+    qDebug() << "KDE KeyCast: setKeepAboveState recibido =" << state;
 
-            alwaysOnTop = state;
+    alwaysOnTop = state;
 
+    settings.setAlwaysOnTop(alwaysOnTop);
 
-            settings.setAlwaysOnTop(
-                alwaysOnTop
-            );
+    qDebug() << "KDE KeyCast: keepAbove =" << alwaysOnTop;
 
+    update();
+  }
 
-            qDebug()
-                << "KDE KeyCast: keepAbove ="
-                << alwaysOnTop;
+  QRect closeButtonHitRect() const { return QRect(width() - 30, 3, 24, 24); }
 
-            update();
-        }
+  void paintCloseButton(QPainter &p) {
+    const QRectF rect(width() - 28, 5, 18, 18);
 
-        QRect closeButtonHitRect() const
-        {
-            return QRect(
-                width() - 30,
-                3,
-                24,
-                24
-            );
-        }
+    const QColor background(32, 34, 40, 175);
+    const QColor border(255, 255, 255, 48);
+    const QColor shadow(0, 0, 0, 85);
+    const QColor iconColor(248, 249, 251, 238);
 
-        void paintCloseButton(QPainter &p)
-        {
-            const QRectF rect(
-                width() - 28,
-                5,
-                18,
-                18
-            );
+    p.save();
 
-            const QColor background(32, 34, 40, 175);
-            const QColor border(255, 255, 255, 48);
-            const QColor shadow(0, 0, 0, 85);
-            const QColor iconColor(248, 249, 251, 238);
+    p.setRenderHint(QPainter::Antialiasing, true);
 
-            p.save();
+    p.setPen(Qt::NoPen);
+    p.setBrush(shadow);
 
-            p.setRenderHint(QPainter::Antialiasing, true);
+    p.drawRoundedRect(rect.adjusted(0, 1, 0, 2), 7, 7);
 
-            p.setPen(Qt::NoPen);
-            p.setBrush(shadow);
+    p.setBrush(background);
 
-            p.drawRoundedRect(
-                rect.adjusted(0, 1, 0, 2),
-                7,
-                7
-            );
+    p.drawRoundedRect(rect, 7, 7);
 
-            p.setBrush(background);
+    p.setBrush(Qt::NoBrush);
+    p.setPen(QPen(border, 1.0));
 
-            p.drawRoundedRect(
-                rect,
-                7,
-                7
-            );
+    p.drawRoundedRect(rect.adjusted(0.5, 0.5, -0.5, -0.5), 6.5, 6.5);
 
-            p.setBrush(Qt::NoBrush);
-            p.setPen(QPen(border, 1.0));
+    const QPointF center = rect.center();
 
-            p.drawRoundedRect(
-                rect.adjusted(0.5, 0.5, -0.5, -0.5),
-                6.5,
-                6.5
-            );
+    p.setPen(QPen(iconColor, 1.5, Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin));
 
-            const QPointF center = rect.center();
+    p.drawLine(QPointF(center.x() - 3.5, center.y() - 3.5),
+               QPointF(center.x() + 3.5, center.y() + 3.5));
 
-            p.setPen(
-                QPen(
-                    iconColor,
-                    1.5,
-                    Qt::SolidLine,
-                    Qt::RoundCap,
-                    Qt::RoundJoin
-                )
-            );
+    p.drawLine(QPointF(center.x() + 3.5, center.y() - 3.5),
+               QPointF(center.x() - 3.5, center.y() + 3.5));
 
-            p.drawLine(
-                QPointF(center.x() - 3.5, center.y() - 3.5),
-                QPointF(center.x() + 3.5, center.y() + 3.5)
-            );
-
-            p.drawLine(
-                QPointF(center.x() + 3.5, center.y() - 3.5),
-                QPointF(center.x() - 3.5, center.y() + 3.5)
-            );
-
-            p.restore();
-        }
+    p.restore();
+  }
 
 protected:
+  void mousePressEvent(QMouseEvent *event) override {
+    if (event->button() == Qt::LeftButton) {
 
-    void mousePressEvent(QMouseEvent *event) override
-    {
-        if (event->button() == Qt::LeftButton) {
+      if (closeButtonHitRect().contains(event->pos())) {
+        QApplication::quit();
+        event->accept();
+        return;
+      }
 
-            if (closeButtonHitRect().contains(event->pos())) {
-                QApplication::quit();
-                event->accept();
-                return;
-            }
+      if (windowHandle()) {
 
-            if (windowHandle()) {
-
-                if (windowHandle()->startSystemMove()) {
-                    event->accept();
-                    return;
-                }
-            }
+        if (windowHandle()->startSystemMove()) {
+          event->accept();
+          return;
         }
-
-        QWidget::mousePressEvent(event);
+      }
     }
 
-    void paintEvent(QPaintEvent *) override
-    {
-        QPainter p(this);
+    QWidget::mousePressEvent(event);
+  }
 
-        p.setRenderHint(QPainter::Antialiasing);
-        p.setRenderHint(QPainter::TextAntialiasing);
+  void paintEvent(QPaintEvent *) override {
+    QPainter p(this);
 
+    p.setRenderHint(QPainter::Antialiasing);
+    p.setRenderHint(QPainter::TextAntialiasing);
 
-        // Fondo semitransparente del panel flotante.
+    // Fondo semitransparente del panel flotante.
 
-         const QColor panelBackground =
-            lightMode
-            ? QColor(248, 249, 251, 145)
-            : QColor(30, 32, 38, 145);
+    const QColor panelBackground =
+        lightMode ? QColor(248, 249, 251, 145) : QColor(30, 32, 38, 145);
 
-        const QColor panelBorder =
-            lightMode
-                ? QColor(0, 0, 0, 55)
-                : QColor(255, 255, 255, 45);
+    const QColor panelBorder =
+        lightMode ? QColor(0, 0, 0, 55) : QColor(255, 255, 255, 45);
 
-        const QRectF panelRect =
-            QRectF(rect()).adjusted(0.5, 0.5, -0.5, -0.5);
+    const QRectF panelRect = QRectF(rect()).adjusted(0.5, 0.5, -0.5, -0.5);
 
-            p.setPen(QPen(panelBorder, 1.0));
-            p.setBrush(panelBackground);
-            p.drawRoundedRect(panelRect, 16.0, 16.0);
+    p.setPen(QPen(panelBorder, 1.0));
+    p.setBrush(panelBackground);
+    p.drawRoundedRect(panelRect, 16.0, 16.0);
 
-        trimVisualQueue();
+    trimVisualQueue();
 
-        paintCloseButton(p);
+    paintCloseButton(p);
 
-        paintStatusIndicators(p);
+    paintStatusIndicators(p);
 
-        if (visualQueue.isEmpty())
-            return;
+    if (visualQueue.isEmpty())
+      return;
 
-        QFont mainFont = QApplication::font();
-        mainFont.setPixelSize(20);
-        mainFont.setBold(true);
+    QFont mainFont = QApplication::font();
+    mainFont.setPixelSize(20);
+    mainFont.setBold(true);
 
-        QFont smallFont = QApplication::font();
-        smallFont.setPixelSize(11);
-        smallFont.setBold(true);
+    QFont smallFont = QApplication::font();
+    smallFont.setPixelSize(11);
+    smallFont.setBold(true);
 
-        const int spacing = 10;
-        const int sideMargin = 12;
-        const int boxHeight = 58;
-        const int minimumBoxWidth = compactMode ? 42 : 46;
+    const int spacing = 10;
+    const int sideMargin = 12;
+    const int boxHeight = 58;
+    const int minimumBoxWidth = compactMode ? 42 : 46;
 
-        const int top =
-            (height() - boxHeight) / 2 - 2;
+    const int top = (height() - boxHeight) / 2 - 2;
 
-        struct DrawEntry {
-            int index;
-            int width;
-            QString primary;
-            QStringList secondary;
-            QStringList keySecondary;
-        };
+    struct DrawEntry {
+      int index;
+      int width;
+      QString primary;
+      QStringList secondary;
+      QStringList keySecondary;
+    };
 
-        QVector<DrawEntry> visibleEntries;
+    QVector<DrawEntry> visibleEntries;
 
-        int usedWidth = 0;
+    int usedWidth = 0;
 
-        for (int i = visualQueue.size() - 1; i >= 0; --i) {
+    for (int i = visualQueue.size() - 1; i >= 0; --i) {
 
-            const VisualEntry &entry =
-                visualQueue[i];
+      const VisualEntry &entry = visualQueue[i];
 
-            QStringList visualKeys;
+      QStringList visualKeys;
 
+      const bool isShiftWheel =
+          entry.combination && entry.keys.size() == 2 &&
+          entry.keys.at(0) == QStringLiteral("Shift") &&
+          (entry.keys.at(1).startsWith(QStringLiteral("Wheel ")) ||
+           entry.keys.at(1).startsWith(QStringLiteral("◎")));
 
-            const bool isShiftWheel =
-                entry.combination &&
-                entry.keys.size() == 2 &&
-                entry.keys.at(0) == QStringLiteral("Shift") &&
-                (
-                    entry.keys.at(1).startsWith(QStringLiteral("Wheel ")) ||
-                    entry.keys.at(1).startsWith(QStringLiteral("◎"))
-                );
-
-            if (entry.maskKeyboard &&
-                (entry.keyboardEntry ||
-                 (entry.combination && !isShiftWheel))) {
-
-                for (const QString &key : entry.keys) {
-                    Q_UNUSED(key);
-
-                    visualKeys.append(
-                        QStringLiteral("•")
-                    );
-                }
-
-            } else {
-
-                for (const QString &key : entry.keys) {
-                    QString visualKey = key;
-
-                    if (compactMode) {
-                        visualKey =
-                            compactDisplayName(key);
-                    } else {
-                        visualKey =
-                            translatedDisplayName(key);
-                    }
-
-                    visualKeys.append(
-                        visualKey
-                    );
-                }
-            }
-
-            QString primary =
-                visualKeys.join(
-                    QStringLiteral(" + ")
-                );
-
-            QStringList secondary;
-
-            /*
-             * Serigrafía específica de teclas especiales en
-             * combinaciones.
-             *
-             * Las teclas normales (C, S, A, etc.) permanecen limpias.
-             */
-            QStringList keySecondary;
-
-            if (visualKeys.size() > 1) {
-
-                for (const QString &key : visualKeys) {
-
-                    const QString symbol =
-                        compactDisplayName(key);
-
-                    if (symbol != key &&
-                        !symbol.isEmpty()) {
-
-                        keySecondary.append(symbol);
-
-                    } else {
-
-                        keySecondary.append(QString());
-                    }
-                }
-            }
-
-            /*
-             * Las leyendas ya no se obtienen de una tabla manual.
-             *
-             * XKB nos proporciona los niveles reales del layout
-             * activo de KDE.
-             *
-             * Las teclas normales conservan sus leyendas también
-             * en compacto.
-             *
-             * Las teclas especiales solo muestran serigrafía
-             * adicional en modo normal.
-             */
-            if (!compactMode &&
-                visualKeys.size() == 1 &&
-                entry.linuxKeyCode >= 0) {
-
-                secondary =
-                    xkbSecondaryLegends(
-                        entry.linuxKeyCode,
-                        primary
-                    );
-
-                /*
-                 * ---------------------------------------------------
-                 * Serigrafía física de teclas especiales
-                 * ---------------------------------------------------
-                 *
-                 * XKB proporciona los niveles reales de las teclas
-                 * de caracteres, pero teclas como Home, End, Print,
-                 * Delete, etc. no tienen necesariamente niveles
-                 * Unicode que podamos utilizar como serigrafía.
-                 *
-                 * En modo normal conservamos el nombre como leyenda
-                 * principal y añadimos aquí únicamente su símbolo
-                 * físico, que será dibujado como superíndice.
-                 *
-                 * En compacto NO se añade porque el símbolo ya es
-                 * la leyenda principal de la tecla.
-                 */
-                if (!compactMode) {
-
-                    static const QHash<QString, QString> specialSymbols = {
-
-                        {"Space", "␣"},
-
-                        {"Home", "⇱"},
-                        {"End", "⇲"},
-                        {"Page Up", "⇞"},
-                        {"Page Down", "⇟"},
-                        {"PgUp", "⇞"},
-                        {"PgDn", "⇟"},
-
-                        {"Insert", "Ins"},
-                        {"Ins", "Ins"},
-
-                        {"Delete", "⌦"},
-                        {"Del", "⌦"},
-
-                        {"Print", "⎙"},
-                        {"PrtSc", "⎙"},
-
-                        {"SysRq", "SysRq"},
-
-                        {"Pause", "Ⅱ"},
-        {"Pause Break", "Ⅱ"},
-
-                        {"Scroll Lock", "ScrLk"},
-                        {"ScrLk", "ScrLk"},
-
-                        {"Num Lock", "Num"},
-                        {"Num", "Num"},
-
-                        {"Caps Lock", "⇪"},
-
-                        {"Esc", "Esc"},
-                        {"Enter", "↵"},
-                        {"Backspace", "⌫"},
-                        {"Tab", "⇥"}
-                    };
-
-                    if (specialSymbols.contains(primary)) {
-
-                        const QString symbol =
-                            specialSymbols.value(primary);
-
-                        if (!secondary.contains(symbol))
-                            secondary.prepend(symbol);
-                    }
-                }
-            }
-
-            if (entry.keyboardEntry &&
-                entry.maskKeyboard) {
-
-                secondary.clear();
-                keySecondary.clear();
-            }
-
-            QFontMetrics fm(mainFont);
-
-            int boxWidth = 0;
-
-            if (entry.combination &&
-                entry.keys.size() > 1) {
-
-                const int comboSeparatorGap = 8;
-
-                const int comboSeparatorWidth =
-                    fm.horizontalAdvance(
-                        QStringLiteral("+")
-                    );
-
-                for (int k = 0;
-                     k < visualKeys.size();
-                     ++k) {
-
-                    const int componentWidth =
-                        qMax(
-                            minimumBoxWidth,
-                            fm.horizontalAdvance(
-                                visualKeys.at(k)
-                            ) + 28
-                        );
-
-                    boxWidth += componentWidth;
-
-                    if (k + 1 <
-                        visualKeys.size()) {
-
-                        boxWidth +=
-                            comboSeparatorGap * 2 +
-                            comboSeparatorWidth;
-                    }
-                }
-
-            } else {
-
-                QString widthText = primary;
-
-                if (!secondary.isEmpty())
-                    widthText += QStringLiteral("  ");
-
-                const int textWidth =
-                    fm.horizontalAdvance(
-                        widthText
-                    );
-
-                boxWidth =
-                    qMax(
-                        minimumBoxWidth,
-                        textWidth + 28
-                    );
-            }
-
-            const int requiredWidth =
-                visibleEntries.isEmpty()
-                    ? boxWidth
-                    : boxWidth + spacing;
-
-            if (usedWidth +
-                    requiredWidth +
-                    sideMargin * 2 >
-                width()) {
-
-                break;
-            }
-
-            visibleEntries.prepend(
-                DrawEntry{
-                    i,
-                    boxWidth,
-                    primary,
-                    secondary,
-                    keySecondary
-                }
-            );
-
-            usedWidth += requiredWidth;
+      if (entry.maskKeyboard &&
+          (entry.keyboardEntry || (entry.combination && !isShiftWheel))) {
+
+        for (const QString &key : entry.keys) {
+          Q_UNUSED(key);
+
+          visualKeys.append(QStringLiteral("•"));
         }
 
-        if (visibleEntries.isEmpty())
-            return;
+      } else {
 
-        int x =
-            (width() - usedWidth) / 2;
+        for (const QString &key : entry.keys) {
+          QString visualKey = key;
 
-        const qint64 now =
-            QDateTime::currentMSecsSinceEpoch();
+          if (compactMode) {
+            visualKey = compactDisplayName(key);
+          } else {
+            visualKey = translatedDisplayName(key);
+          }
 
-        /*
-         * -----------------------------------------------------------
-         * Paleta
-         * -----------------------------------------------------------
-         */
-
-        const QColor shadowColor(
-            0, 0, 0, 190
-        );
-
-        const QColor deepShadow(
-            0, 0, 0, 90
-        );
-
-        const QColor keyTop =
-            lightMode
-                ? QColor(255, 255, 255, 255)
-                : QColor(64, 66, 72, 255);
-
-        const QColor keyMiddle =
-            lightMode
-                ? QColor(242, 243, 245, 255)
-                : QColor(43, 46, 52, 255);
-
-        const QColor keyBottom =
-            lightMode
-                ? QColor(224, 226, 230, 255)
-                : QColor(23, 25, 30, 255);
-
-        const QColor edge =
-            lightMode
-                ? QColor(0, 0, 0, 55)
-                : QColor(255, 255, 255, 68);
-
-        const QColor edgeBottom =
-            lightMode
-                ? QColor(0, 0, 0, 105)
-                : QColor(0, 0, 0, 150);
-
-        const QColor highlight =
-            lightMode
-                ? QColor(255, 255, 255, 150)
-                : QColor(255, 255, 255, 34);
-
-        const QColor textColor =
-            lightMode
-                ? QColor(28, 30, 34, 255)
-                : QColor(250, 250, 252, 255);
-
-        const QColor secondaryColor =
-            lightMode
-                ? QColor(75, 78, 84, 185)
-                : QColor(205, 207, 212, 185);
-
-        const QColor combinationBorder =
-            lightMode
-                ? QColor(0, 0, 0, 65)
-                : QColor(255, 255, 255, 88);
-        /*
-         * -----------------------------------------------------------
-         * Keycaps
-         * -----------------------------------------------------------
-         */
-
-        /*
-         * -----------------------------------------------------------
-         * Keycaps
-         * -----------------------------------------------------------
-         *
-         * Las teclas individuales se dibujan como hasta ahora.
-         *
-         * Las combinaciones se representan como keycaps
-         * independientes:
-         *
-         *     [ Ctrl ] + [ C ]
-         *
-         * en lugar de:
-         *
-         *     [ Ctrl + C ]
-         *
-         * El símbolo + queda fuera de las keycaps.
-         */
-
-        for (const DrawEntry &draw : visibleEntries) {
-
-            const VisualEntry &entry =
-                visualQueue[draw.index];
-
-            qreal repeatBadgeX = x - 5;
-
-            const qint64 age =
-                now - entry.created;
-
-            const qint64 remaining =
-                entry.expires - now;
-
-            qreal opacity = 1.0;
-
-            if (age < 100) {
-
-                opacity =
-                    qBound(
-                        0.0,
-                        age / 100.0,
-                        1.0
-                    );
-
-            } else if (remaining < 140) {
-
-                opacity =
-                    qBound(
-                        0.0,
-                        remaining / 140.0,
-                        1.0
-                    );
-            }
-
-            p.save();
-
-            p.setOpacity(opacity);
-
-            const qreal lift =
-                age < 120
-                    ? 3.0 *
-                      (1.0 -
-                       qBound(
-                           0.0,
-                           age / 120.0,
-                           1.0
-                       ))
-                    : 0.0;
-
-            /*
-             * -------------------------------------------------------
-             * Lambda común para dibujar una keycap.
-             * -------------------------------------------------------
-             */
-
-            auto drawKeycap =
-                [&](const QRectF &rect,
-                    const QString &text,
-                    const QStringList &legends,
-                    bool combinationCap) {
-
-                QRectF keyRect = rect;
-                keyRect.translate(0, -lift);
-
-                /*
-                 * Sombra profunda.
-                 */
-                QRectF deepRect =
-                    keyRect.adjusted(
-                        0,
-                        5,
-                        0,
-                        7
-                    );
-
-                p.setPen(Qt::NoPen);
-                p.setBrush(deepShadow);
-
-                p.drawRoundedRect(
-                    deepRect,
-                    10,
-                    10
-                );
-
-                /*
-                 * Sombra principal.
-                 */
-                QRectF shadowRect =
-                    keyRect.adjusted(
-                        0,
-                        3,
-                        0,
-                        5
-                    );
-
-                p.setBrush(shadowColor);
-
-                p.drawRoundedRect(
-                    shadowRect,
-                    10,
-                    10
-                );
-
-                /*
-                 * Cuerpo 3D.
-                 */
-                QLinearGradient gradient(
-                    keyRect.topLeft(),
-                    keyRect.bottomLeft()
-                );
-
-                gradient.setColorAt(
-                    0.0,
-                    keyTop
-                );
-
-                gradient.setColorAt(
-                    0.48,
-                    keyMiddle
-                );
-
-                gradient.setColorAt(
-                    1.0,
-                    keyBottom
-                );
-
-                p.setBrush(gradient);
-                p.setPen(Qt::NoPen);
-
-                p.drawRoundedRect(
-                    keyRect,
-                    10,
-                    10
-                );
-
-                /*
-                 * Borde.
-                 */
-                const QColor borderColor =
-                    combinationCap
-                        ? combinationBorder
-                        : edge;
-
-                p.setBrush(Qt::NoBrush);
-
-                p.setPen(
-                    QPen(
-                        borderColor,
-                        1.0
-                    )
-                );
-
-                p.drawRoundedRect(
-                    keyRect.adjusted(
-                        0.5,
-                        0.5,
-                        -0.5,
-                        -0.5
-                    ),
-                    10,
-                    10
-                );
-
-                /*
-                 * Línea superior.
-                 */
-                p.setPen(
-                    QPen(
-                        highlight,
-                        1.0
-                    )
-                );
-
-                p.drawLine(
-                    keyRect.left() + 8,
-                    keyRect.top() + 2,
-                    keyRect.right() - 8,
-                    keyRect.top() + 2
-                );
-
-                /*
-                 * Borde inferior.
-                 */
-                p.setPen(
-                    QPen(
-                        edgeBottom,
-                        1.0
-                    )
-                );
-
-                p.drawLine(
-                    keyRect.left() + 7,
-                    keyRect.bottom() - 1,
-                    keyRect.right() - 7,
-                    keyRect.bottom() - 1
-                );
-
-                /*
-                 * Serigrafía secundaria.
-                 */
-                if (!legends.isEmpty()) {
-
-                    QFont legendFont =
-                        QApplication::font();
-
-                    legendFont.setPixelSize(12);
-                    legendFont.setBold(true);
-
-                    p.setFont(legendFont);
-                    p.setPen(secondaryColor);
-
-                    QFontMetrics legendMetrics(
-                        legendFont
-                    );
-
-                    const int legendCount =
-                        qMin(2, legends.size());
-
-                    const int rightMargin = 7;
-                    const int topMargin = 4;
-                    const int lineSpacing = 1;
-
-                    const int lineHeight =
-                        legendMetrics.height();
-
-                    for (int i = 0;
-                         i < legendCount;
-                         ++i) {
-
-                        const QString &legend =
-                            legends.at(i);
-
-                        const int textWidth =
-                            legendMetrics.horizontalAdvance(
-                                legend
-                            );
-
-                        QRectF legendRect(
-                            keyRect.right()
-                                - rightMargin
-                                - textWidth,
-                            keyRect.top()
-                                + topMargin
-                                + i *
-                                  (lineHeight +
-                                   lineSpacing),
-                            textWidth,
-                            lineHeight
-                        );
-
-                        p.drawText(
-                            legendRect,
-                            Qt::AlignRight |
-                            Qt::AlignTop,
-                            legend
-                        );
-                    }
-                }
-
-                /*
-                 * Leyenda principal.
-                 */
-                p.setFont(mainFont);
-                p.setPen(textColor);
-
-                QRectF primaryRect =
-                    keyRect;
-
-                if (!legends.isEmpty()) {
-
-                    primaryRect.adjust(
-                        0,
-                        3,
-                        0,
-                        2
-                    );
-                }
-
-                p.drawText(
-                    primaryRect,
-                    Qt::AlignCenter,
-                    text
-                );
-            };
-
-            /*
-             * -------------------------------------------------------
-             * COMBINACIÓN
-             * -------------------------------------------------------
-             */
-
-            if (entry.combination &&
-                entry.keys.size() > 1) {
-
-                QFontMetrics mainMetrics(mainFont);
-
-                const QString separator =
-                    QStringLiteral("+");
-
-                const int separatorWidth =
-                    mainMetrics.horizontalAdvance(
-                        separator
-                    );
-
-                const int separatorGap = 8;
-
-                QVector<QString> components;
-                QVector<int> componentWidths;
-                QVector<QStringList> componentLegends;
-
-                int totalWidth = 0;
-
-                for (int i = 0;
-                     i < entry.keys.size();
-                     ++i) {
-
-                         const bool maskCombination =
-                             entry.keyboardEntry &&
-                             entry.maskKeyboard;
-
-                             const QString component =
-                                 maskCombination
-                                     ? QStringLiteral("•")
-                                     : (
-                                         compactMode
-                                             ? compactDisplayName(
-                                                 entry.keys.at(i)
-                                               )
-                                             : translatedDisplayName(
-                                               entry.keys.at(i)
-                                           )
-                                       );
-
-                    const int textWidth =
-                        mainMetrics.horizontalAdvance(
-                            component
-                        );
-
-                    const int componentWidth =
-                        qMax(
-                            minimumBoxWidth,
-                            textWidth + 28
-                        );
-
-                    components.append(component);
-                    componentWidths.append(componentWidth);
-
-                    QStringList legends;
-
-                    if (!entry.keySecondaryLegends.isEmpty() &&
-                        i < entry.keySecondaryLegends.size()) {
-
-                        const QString legend =
-                            entry.keySecondaryLegends.at(i);
-
-                        if (!legend.isEmpty())
-                            legends =
-                                legend.split(
-                                    QStringLiteral("\n"),
-                                    Qt::SkipEmptyParts
-                                );
-
-                    } else if (i < draw.keySecondary.size()) {
-
-                        const QString legend =
-                            draw.keySecondary.at(i);
-
-                        if (!legend.isEmpty())
-                            legends.append(legend);
-                    }
-
-                    componentLegends.append(legends);
-
-                    totalWidth += componentWidth;
-
-                    if (i + 1 < entry.keys.size()) {
-
-                        totalWidth +=
-                            separatorGap * 2 +
-                            separatorWidth;
-                    }
-                }
-
-                qreal componentX =
-                    x +
-                    (draw.width - totalWidth) / 2.0;
-
-                /*
-                 * Si por alguna razón el ancho calculado supera
-                 * ligeramente el espacio reservado, lo centramos
-                 * igualmente dentro de la entrada.
-                 */
-                for (int i = 0;
-                     i < components.size();
-                     ++i) {
-
-                    if (i == components.size() - 1)
-                        repeatBadgeX = componentX - 5;
-
-                    QRectF componentRect(
-                        componentX,
-                        top,
-                        componentWidths.at(i),
-                        boxHeight
-                    );
-
-                    drawKeycap(
-                        componentRect,
-                        components.at(i),
-                        componentLegends.at(i),
-                        true
-                    );
-
-                    componentX +=
-                        componentWidths.at(i);
-
-                    if (i + 1 <
-                        components.size()) {
-
-                        /*
-                         * Separador +.
-                         */
-                        componentX += separatorGap;
-
-                        p.setFont(mainFont);
-                        p.setPen(secondaryColor);
-
-                        QRectF plusRect(
-                            componentX,
-                            top,
-                            separatorWidth,
-                            boxHeight
-                        );
-
-                        p.drawText(
-                            plusRect,
-                            Qt::AlignCenter,
-                            separator
-                        );
-
-                        componentX +=
-                            separatorWidth +
-                            separatorGap;
-                    }
-                }
-
-            } else {
-
-                /*
-                 * ---------------------------------------------------
-                 * TECLA INDIVIDUAL
-                 * ---------------------------------------------------
-                 */
-
-                QRectF r(
-                    x,
-                    top,
-                    draw.width,
-                    boxHeight
-                );
-
-                drawKeycap(
-                    r,
-                    draw.primary,
-                    draw.secondary,
-                    false
-                );
-            }
-
-            /*
-             * -------------------------------------------------------
-             * Burbuja de repetición
-             * -------------------------------------------------------
-             */
-
-            if (entry.repeatCount > 1) {
-
-                const QString countText =
-                    QStringLiteral("×%1")
-                        .arg(entry.repeatCount);
-
-                QFont badgeFont =
-                    QApplication::font();
-
-                badgeFont.setPixelSize(11);
-                badgeFont.setBold(true);
-
-                QFontMetrics badgeMetrics(
-                    badgeFont
-                );
-
-                const int badgeWidth =
-                    qMax(
-                        24,
-                        badgeMetrics.horizontalAdvance(
-                            countText
-                        ) + 12
-                    );
-
-                const int badgeHeight = 19;
-
-                const qreal badgeScale =
-                    age < 140
-                        ? 1.0 +
-                          0.18 *
-                          (1.0 -
-                           qBound(
-                               0.0,
-                               age / 140.0,
-                               1.0
-                           ))
-                        : 1.0;
-
-                const qreal scaledBadgeWidth =
-                    badgeWidth * badgeScale;
-
-                const qreal scaledBadgeHeight =
-                    badgeHeight * badgeScale;
-
-                QRectF badgeRect(
-                    repeatBadgeX,
-                    top - 7,
-                    scaledBadgeWidth,
-                    scaledBadgeHeight
-                );
-
-                QRectF badgeShadow =
-                    badgeRect.adjusted(
-                        0,
-                        2,
-                        0,
-                        3
-                    );
-
-                p.setPen(Qt::NoPen);
-
-                p.setBrush(
-                    QColor(
-                        0,
-                        0,
-                        0,
-                        170
-                    )
-                );
-
-                p.drawRoundedRect(
-                    badgeShadow,
-                    8.5,
-                    8.5
-                );
-
-                QLinearGradient badgeGradient(
-                    badgeRect.topLeft(),
-                    badgeRect.bottomLeft()
-                );
-
-                badgeGradient.setColorAt(
-                    0.0,
-                    QColor(
-                        82,
-                        84,
-                        90,
-                        245
-                    )
-                );
-
-                badgeGradient.setColorAt(
-                    1.0,
-                    QColor(
-                        42,
-                        44,
-                        49,
-                        245
-                    )
-                );
-
-                p.setBrush(badgeGradient);
-
-                p.drawRoundedRect(
-                    badgeRect,
-                    8.5,
-                    8.5
-                );
-
-                p.setBrush(Qt::NoBrush);
-
-                p.setPen(
-                    QPen(
-                        QColor(
-                            255,
-                            255,
-                            255,
-                            70
-                        ),
-                        1.0
-                    )
-                );
-
-                p.drawRoundedRect(
-                    badgeRect.adjusted(
-                        0.5,
-                        0.5,
-                        -0.5,
-                        -0.5
-                    ),
-                    8,
-                    8
-                );
-
-                p.setFont(badgeFont);
-
-                p.setPen(
-                    QColor(
-                        248,
-                        248,
-                        250,
-                        235
-                    )
-                );
-
-                p.drawText(
-                    badgeRect,
-                    Qt::AlignCenter,
-                    countText
-                );
-            }
-
-            p.restore();
-
-            x +=
-                draw.width +
-                spacing;
+          visualKeys.append(visualKey);
         }
+      }
+
+      QString primary = visualKeys.join(QStringLiteral(" + "));
+
+      QStringList secondary;
+
+      /*
+       * Serigrafía específica de teclas especiales en
+       * combinaciones.
+       *
+       * Las teclas normales (C, S, A, etc.) permanecen limpias.
+       */
+      QStringList keySecondary;
+
+      if (visualKeys.size() > 1) {
+
+        for (const QString &key : visualKeys) {
+
+          const QString symbol = compactDisplayName(key);
+
+          if (symbol != key && !symbol.isEmpty()) {
+
+            keySecondary.append(symbol);
+
+          } else {
+
+            keySecondary.append(QString());
+          }
+        }
+      }
+
+      /*
+       * Las leyendas ya no se obtienen de una tabla manual.
+       *
+       * XKB nos proporciona los niveles reales del layout
+       * activo de KDE.
+       *
+       * Las teclas normales conservan sus leyendas también
+       * en compacto.
+       *
+       * Las teclas especiales solo muestran serigrafía
+       * adicional en modo normal.
+       */
+      if (!compactMode && visualKeys.size() == 1 && entry.linuxKeyCode >= 0) {
+
+        secondary = xkbSecondaryLegends(entry.linuxKeyCode, primary);
+
+        /*
+         * ---------------------------------------------------
+         * Serigrafía física de teclas especiales
+         * ---------------------------------------------------
+         *
+         * XKB proporciona los niveles reales de las teclas
+         * de caracteres, pero teclas como Home, End, Print,
+         * Delete, etc. no tienen necesariamente niveles
+         * Unicode que podamos utilizar como serigrafía.
+         *
+         * En modo normal conservamos el nombre como leyenda
+         * principal y añadimos aquí únicamente su símbolo
+         * físico, que será dibujado como superíndice.
+         *
+         * En compacto NO se añade porque el símbolo ya es
+         * la leyenda principal de la tecla.
+         */
+        if (!compactMode) {
+
+          static const QHash<QString, QString> specialSymbols = {
+
+              {"Space", "␣"},
+
+              {"Home", "⇱"},
+              {"End", "⇲"},
+              {"Page Up", "⇞"},
+              {"Page Down", "⇟"},
+              {"PgUp", "⇞"},
+              {"PgDn", "⇟"},
+
+              {"Insert", "Ins"},
+              {"Ins", "Ins"},
+
+              {"Delete", "⌦"},
+              {"Del", "⌦"},
+
+              {"Print", "⎙"},
+              {"PrtSc", "⎙"},
+
+              {"SysRq", "SysRq"},
+
+              {"Pause", "Ⅱ"},
+              {"Pause Break", "Ⅱ"},
+
+              {"Scroll Lock", "ScrLk"},
+              {"ScrLk", "ScrLk"},
+
+              {"Num Lock", "Num"},
+              {"Num", "Num"},
+
+              {"Caps Lock", "⇪"},
+
+              {"Esc", "Esc"},
+              {"Enter", "↵"},
+              {"Backspace", "⌫"},
+              {"Tab", "⇥"}};
+
+          if (specialSymbols.contains(primary)) {
+
+            const QString symbol = specialSymbols.value(primary);
+
+            if (!secondary.contains(symbol))
+              secondary.prepend(symbol);
+          }
+        }
+      }
+
+      if (entry.keyboardEntry && entry.maskKeyboard) {
+
+        secondary.clear();
+        keySecondary.clear();
+      }
+
+      QFontMetrics fm(mainFont);
+
+      int boxWidth = 0;
+
+      if (entry.combination && entry.keys.size() > 1) {
+
+        const int comboSeparatorGap = 8;
+
+        const int comboSeparatorWidth =
+            fm.horizontalAdvance(QStringLiteral("+"));
+
+        for (int k = 0; k < visualKeys.size(); ++k) {
+
+          const int componentWidth = qMax(
+              minimumBoxWidth, fm.horizontalAdvance(visualKeys.at(k)) + 28);
+
+          boxWidth += componentWidth;
+
+          if (k + 1 < visualKeys.size()) {
+
+            boxWidth += comboSeparatorGap * 2 + comboSeparatorWidth;
+          }
+        }
+
+      } else {
+
+        QString widthText = primary;
+
+        if (!secondary.isEmpty())
+          widthText += QStringLiteral("  ");
+
+        const int textWidth = fm.horizontalAdvance(widthText);
+
+        boxWidth = qMax(minimumBoxWidth, textWidth + 28);
+      }
+
+      const int requiredWidth =
+          visibleEntries.isEmpty() ? boxWidth : boxWidth + spacing;
+
+      if (usedWidth + requiredWidth + sideMargin * 2 > width()) {
+
+        break;
+      }
+
+      visibleEntries.prepend(
+          DrawEntry{i, boxWidth, primary, secondary, keySecondary});
+
+      usedWidth += requiredWidth;
     }
 
-    void paintStatusIndicators(QPainter &p)
-    {
-        enum class StatusIcon {
-            HideKeys,
-            Pause,
-            ClickThrough,
-            AlwaysOnTop,
-            OnlyShortcuts,
-            CapsLock,
-            NumLock,
-            ScrollLock
-        };
+    if (visibleEntries.isEmpty())
+      return;
 
-        QVector<StatusIcon> items;
+    int x = (width() - usedWidth) / 2;
 
-        if (hideKeys)
-            items.append(StatusIcon::HideKeys);
+    const qint64 now = QDateTime::currentMSecsSinceEpoch();
 
-        if (pauseInput)
-            items.append(StatusIcon::Pause);
+    /*
+     * -----------------------------------------------------------
+     * Paleta
+     * -----------------------------------------------------------
+     */
 
-        if (clickThrough)
-            items.append(StatusIcon::ClickThrough);
+    const QColor shadowColor(0, 0, 0, 190);
 
-        if (alwaysOnTop)
-            items.append(StatusIcon::AlwaysOnTop);
+    const QColor deepShadow(0, 0, 0, 90);
 
-        if (onlyShortcuts)
-            items.append(StatusIcon::OnlyShortcuts);
+    const QColor keyTop =
+        lightMode ? QColor(255, 255, 255, 255) : QColor(64, 66, 72, 255);
 
-        const bool capsLock =
-            xkb.isReady() &&
-            xkb.ledActive("Caps Lock");
+    const QColor keyMiddle =
+        lightMode ? QColor(242, 243, 245, 255) : QColor(43, 46, 52, 255);
 
-        const bool numLock =
-            xkb.isReady() &&
-            xkb.ledActive("Num Lock");
+    const QColor keyBottom =
+        lightMode ? QColor(224, 226, 230, 255) : QColor(23, 25, 30, 255);
 
-        const bool scrollLock =
-            xkb.isReady() &&
-            xkb.ledActive("Scroll Lock");
+    const QColor edge =
+        lightMode ? QColor(0, 0, 0, 55) : QColor(255, 255, 255, 68);
 
-        if (capsLock)
-            items.append(StatusIcon::CapsLock);
+    const QColor edgeBottom =
+        lightMode ? QColor(0, 0, 0, 105) : QColor(0, 0, 0, 150);
 
-        if (numLock)
-            items.append(StatusIcon::NumLock);
+    const QColor highlight =
+        lightMode ? QColor(255, 255, 255, 150) : QColor(255, 255, 255, 34);
 
-        if (scrollLock)
-            items.append(StatusIcon::ScrollLock);
+    const QColor textColor =
+        lightMode ? QColor(28, 30, 34, 255) : QColor(250, 250, 252, 255);
 
-        if (items.isEmpty())
-            return;
+    const QColor secondaryColor =
+        lightMode ? QColor(75, 78, 84, 185) : QColor(205, 207, 212, 185);
 
-        p.save();
+    const QColor combinationBorder =
+        lightMode ? QColor(0, 0, 0, 65) : QColor(255, 255, 255, 88);
+    /*
+     * -----------------------------------------------------------
+     * Keycaps
+     * -----------------------------------------------------------
+     */
 
-        p.setRenderHint(QPainter::Antialiasing, true);
+    /*
+     * -----------------------------------------------------------
+     * Keycaps
+     * -----------------------------------------------------------
+     *
+     * Las teclas individuales se dibujan como hasta ahora.
+     *
+     * Las combinaciones se representan como keycaps
+     * independientes:
+     *
+     *     [ Ctrl ] + [ C ]
+     *
+     * en lugar de:
+     *
+     *     [ Ctrl + C ]
+     *
+     * El símbolo + queda fuera de las keycaps.
+     */
 
-        const int size = 18;
-        const int spacing = 5;
-        const int rightMargin = 33;
-        const int topMargin = 5;
+    for (const DrawEntry &draw : visibleEntries) {
 
-        const QColor background(32, 34, 40, 175);
-        const QColor border(255, 255, 255, 48);
-        const QColor shadow(0, 0, 0, 85);
-        const QColor iconColor(248, 249, 251, 238);
+      const VisualEntry &entry = visualQueue[draw.index];
 
-        const int totalWidth =
-            items.size() * size +
-            (items.size() - 1) * spacing;
+      qreal repeatBadgeX = x - 5;
 
-        int x = width() - rightMargin - totalWidth;
+      const qint64 age = now - entry.created;
 
-        auto drawIcon =
-            [&](QPainter &painter,
-                const QRectF &rect,
-                StatusIcon icon)
-        {
-            const QPointF c = rect.center();
+      const qint64 remaining = entry.expires - now;
 
-            QPen pen(
-                iconColor,
-                1.35,
-                Qt::SolidLine,
-                Qt::RoundCap,
-                Qt::RoundJoin
-            );
+      qreal opacity = 1.0;
 
-            painter.setPen(pen);
-            painter.setBrush(Qt::NoBrush);
+      if (age < 100) {
 
-            switch (icon) {
+        opacity = qBound(0.0, age / 100.0, 1.0);
 
-            case StatusIcon::HideKeys: {
-                // Candado
-                const QRectF body(
-                    c.x() - 4.0,
-                    c.y() - 0.5,
-                    8.0,
-                    6.5
-                );
+      } else if (remaining < 140) {
 
-                painter.drawRoundedRect(body, 1.5, 1.5);
+        opacity = qBound(0.0, remaining / 140.0, 1.0);
+      }
 
-                QPainterPath shackle;
-                shackle.moveTo(c.x() - 3.0, c.y() - 0.5);
-                shackle.lineTo(c.x() - 3.0, c.y() - 2.5);
-                shackle.cubicTo(
-                    c.x() - 3.0, c.y() - 5.5,
-                    c.x() + 3.0, c.y() - 5.5,
-                    c.x() + 3.0, c.y() - 2.5
-                );
-                shackle.lineTo(c.x() + 3.0, c.y() - 0.5);
+      p.save();
 
-                painter.drawPath(shackle);
-                break;
-            }
+      p.setOpacity(opacity);
 
-            case StatusIcon::Pause:
-                painter.drawRoundedRect(
-                    QRectF(c.x() - 3.8, c.y() - 5.0, 2.4, 10.0),
-                    1.0,
-                    1.0
-                );
-                painter.drawRoundedRect(
-                    QRectF(c.x() + 1.4, c.y() - 5.0, 2.4, 10.0),
-                    1.0,
-                    1.0
-                );
-                break;
+      const qreal lift =
+          age < 120 ? 3.0 * (1.0 - qBound(0.0, age / 120.0, 1.0)) : 0.0;
 
-            case StatusIcon::ClickThrough: {
-                // Ratón
-                const QRectF mouse(
-                    c.x() - 4.0,
-                    c.y() - 5.5,
-                    8.0,
-                    11.0
-                );
+      /*
+       * -------------------------------------------------------
+       * Lambda común para dibujar una keycap.
+       * -------------------------------------------------------
+       */
 
-                painter.drawRoundedRect(mouse, 3.5, 3.5);
-                painter.drawLine(
-                    QPointF(c.x(), c.y() - 5.0),
-                    QPointF(c.x(), c.y() + 5.0)
-                );
-                painter.drawLine(
-                    QPointF(c.x(), c.y() - 2.5),
-                    QPointF(c.x(), c.y() - 0.5)
-                );
-                break;
-            }
+      auto drawKeycap = [&](const QRectF &rect, const QString &text,
+                            const QStringList &legends, bool combinationCap) {
+        QRectF keyRect = rect;
+        keyRect.translate(0, -lift);
 
-            case StatusIcon::AlwaysOnTop: {
-                // Pin
-                QPolygonF pin;
-                pin << QPointF(c.x(),     c.y() - 5.0)
-                    << QPointF(c.x() + 3.2, c.y() - 1.5)
-                    << QPointF(c.x() + 1.2, c.y() + 0.5)
-                    << QPointF(c.x() + 1.2, c.y() + 3.0)
-                    << QPointF(c.x() - 1.2, c.y() + 3.0)
-                    << QPointF(c.x() - 1.2, c.y() + 0.5)
-                    << QPointF(c.x() - 3.2, c.y() - 1.5);
+        /*
+         * Sombra profunda.
+         */
+        QRectF deepRect = keyRect.adjusted(0, 5, 0, 7);
 
-                painter.drawPolygon(pin);
+        p.setPen(Qt::NoPen);
+        p.setBrush(deepShadow);
 
-                painter.drawLine(
-                    QPointF(c.x(), c.y() + 3.0),
-                    QPointF(c.x(), c.y() + 5.5)
-                );
-                break;
-            }
+        p.drawRoundedRect(deepRect, 10, 10);
 
-            case StatusIcon::OnlyShortcuts: {
-                // ↯
-                QPolygonF bolt;
-                bolt << QPointF(c.x() + 1.5, c.y() - 6.0)
-                     << QPointF(c.x() - 2.5, c.y() - 0.5)
-                     << QPointF(c.x(),      c.y() - 0.5)
-                     << QPointF(c.x() - 1.5, c.y() + 6.0)
-                     << QPointF(c.x() + 2.5, c.y() + 0.5)
-                     << QPointF(c.x(),      c.y() + 0.5);
+        /*
+         * Sombra principal.
+         */
+        QRectF shadowRect = keyRect.adjusted(0, 3, 0, 5);
 
-                painter.drawPolygon(bolt);
-                break;
-            }
+        p.setBrush(shadowColor);
 
-            case StatusIcon::CapsLock: {
-                // ⇪
-                painter.drawRoundedRect(
-                    QRectF(c.x() - 5.0, c.y() + 0.5, 10.0, 4.5),
-                    1.0,
-                    1.0
-                );
+        p.drawRoundedRect(shadowRect, 10, 10);
 
-                painter.drawLine(
-                    QPointF(c.x(), c.y() + 0.5),
-                    QPointF(c.x(), c.y() - 5.0)
-                );
+        /*
+         * Cuerpo 3D.
+         */
+        QLinearGradient gradient(keyRect.topLeft(), keyRect.bottomLeft());
 
-                painter.drawLine(
-                    QPointF(c.x(), c.y() - 5.0),
-                    QPointF(c.x() - 2.5, c.y() - 2.5)
-                );
+        gradient.setColorAt(0.0, keyTop);
 
-                painter.drawLine(
-                    QPointF(c.x(), c.y() - 5.0),
-                    QPointF(c.x() + 2.5, c.y() - 2.5)
-                );
-                break;
-            }
+        gradient.setColorAt(0.48, keyMiddle);
 
-            case StatusIcon::NumLock: {
-                // Pequeño teclado numérico
-                const qreal cell = 2.2;
-                const qreal gap = 1.0;
-                const qreal total = cell * 3 + gap * 2;
-                const qreal startX = c.x() - total / 2.0;
-                const qreal startY = c.y() - total / 2.0;
+        gradient.setColorAt(1.0, keyBottom);
 
-                for (int row = 0; row < 3; ++row) {
-                    for (int col = 0; col < 3; ++col) {
-                        painter.drawRoundedRect(
-                            QRectF(
-                                startX + col * (cell + gap),
-                                startY + row * (cell + gap),
-                                cell,
-                                cell
-                            ),
-                            0.5,
-                            0.5
-                        );
-                    }
-                }
-                break;
-            }
+        p.setBrush(gradient);
+        p.setPen(Qt::NoPen);
 
-            case StatusIcon::ScrollLock: {
-                // ⇳
-                painter.drawLine(
-                    QPointF(c.x(), c.y() - 5.5),
-                    QPointF(c.x(), c.y() + 5.5)
-                );
+        p.drawRoundedRect(keyRect, 10, 10);
 
-                painter.drawLine(
-                    QPointF(c.x(), c.y() - 5.5),
-                    QPointF(c.x() - 2.3, c.y() - 3.0)
-                );
+        /*
+         * Borde.
+         */
+        const QColor borderColor = combinationCap ? combinationBorder : edge;
 
-                painter.drawLine(
-                    QPointF(c.x(), c.y() - 5.5),
-                    QPointF(c.x() + 2.3, c.y() - 3.0)
-                );
+        p.setBrush(Qt::NoBrush);
 
-                painter.drawLine(
-                    QPointF(c.x(), c.y() + 5.5),
-                    QPointF(c.x() - 2.3, c.y() + 3.0)
-                );
+        p.setPen(QPen(borderColor, 1.0));
 
-                painter.drawLine(
-                    QPointF(c.x(), c.y() + 5.5),
-                    QPointF(c.x() + 2.3, c.y() + 3.0)
-                );
-                break;
-            }
-            }
-        };
+        p.drawRoundedRect(keyRect.adjusted(0.5, 0.5, -0.5, -0.5), 10, 10);
 
-        for (const StatusIcon icon : items) {
+        /*
+         * Línea superior.
+         */
+        p.setPen(QPen(highlight, 1.0));
 
-            const QRectF rect(
-                x,
-                topMargin,
-                size,
-                size
-            );
+        p.drawLine(keyRect.left() + 8, keyRect.top() + 2, keyRect.right() - 8,
+                   keyRect.top() + 2);
 
-            // Sombra
-            p.setPen(Qt::NoPen);
-            p.setBrush(shadow);
-            p.drawRoundedRect(
-                rect.adjusted(0, 1, 0, 2),
-                7,
-                7
-            );
+        /*
+         * Borde inferior.
+         */
+        p.setPen(QPen(edgeBottom, 1.0));
 
-            // Fondo fijo para ambos modos
-            p.setBrush(background);
-            p.drawRoundedRect(
-                rect,
-                7,
-                7
-            );
+        p.drawLine(keyRect.left() + 7, keyRect.bottom() - 1,
+                   keyRect.right() - 7, keyRect.bottom() - 1);
 
-            // Borde fijo
-            p.setBrush(Qt::NoBrush);
-            p.setPen(QPen(border, 1.0));
-            p.drawRoundedRect(
-                rect.adjusted(0.5, 0.5, -0.5, -0.5),
-                6.5,
-                6.5
-            );
+        /*
+         * Serigrafía secundaria.
+         */
+        if (!legends.isEmpty()) {
 
-            // Icono
-            drawIcon(
-                p,
-                rect.adjusted(2.0, 2.0, -2.0, -2.0),
-                icon
-            );
+          QFont legendFont = QApplication::font();
 
-            x += size + spacing;
+          legendFont.setPixelSize(12);
+          legendFont.setBold(true);
+
+          p.setFont(legendFont);
+          p.setPen(secondaryColor);
+
+          QFontMetrics legendMetrics(legendFont);
+
+          const int legendCount = qMin(2, legends.size());
+
+          const int rightMargin = 7;
+          const int topMargin = 4;
+          const int lineSpacing = 1;
+
+          const int lineHeight = legendMetrics.height();
+
+          for (int i = 0; i < legendCount; ++i) {
+
+            const QString &legend = legends.at(i);
+
+            const int textWidth = legendMetrics.horizontalAdvance(legend);
+
+            QRectF legendRect(keyRect.right() - rightMargin - textWidth,
+                              keyRect.top() + topMargin +
+                                  i * (lineHeight + lineSpacing),
+                              textWidth, lineHeight);
+
+            p.drawText(legendRect, Qt::AlignRight | Qt::AlignTop, legend);
+          }
         }
 
-        p.restore();
+        /*
+         * Leyenda principal.
+         */
+        p.setFont(mainFont);
+        p.setPen(textColor);
+
+        QRectF primaryRect = keyRect;
+
+        if (!legends.isEmpty()) {
+
+          primaryRect.adjust(0, 3, 0, 2);
+        }
+
+        p.drawText(primaryRect, Qt::AlignCenter, text);
+      };
+
+      /*
+       * -------------------------------------------------------
+       * COMBINACIÓN
+       * -------------------------------------------------------
+       */
+
+      if (entry.combination && entry.keys.size() > 1) {
+
+        QFontMetrics mainMetrics(mainFont);
+
+        const QString separator = QStringLiteral("+");
+
+        const int separatorWidth = mainMetrics.horizontalAdvance(separator);
+
+        const int separatorGap = 8;
+
+        QVector<QString> components;
+        QVector<int> componentWidths;
+        QVector<QStringList> componentLegends;
+
+        int totalWidth = 0;
+
+        for (int i = 0; i < entry.keys.size(); ++i) {
+
+          const bool maskCombination =
+              entry.keyboardEntry && entry.maskKeyboard;
+
+          const QString component =
+              maskCombination
+                  ? QStringLiteral("•")
+                  : (compactMode ? compactDisplayName(entry.keys.at(i))
+                                 : translatedDisplayName(entry.keys.at(i)));
+
+          const int textWidth = mainMetrics.horizontalAdvance(component);
+
+          const int componentWidth = qMax(minimumBoxWidth, textWidth + 28);
+
+          components.append(component);
+          componentWidths.append(componentWidth);
+
+          QStringList legends;
+
+          if (!entry.keySecondaryLegends.isEmpty() &&
+              i < entry.keySecondaryLegends.size()) {
+
+            const QString legend = entry.keySecondaryLegends.at(i);
+
+            if (!legend.isEmpty())
+              legends = legend.split(QStringLiteral("\n"), Qt::SkipEmptyParts);
+
+          } else if (i < draw.keySecondary.size()) {
+
+            const QString legend = draw.keySecondary.at(i);
+
+            if (!legend.isEmpty())
+              legends.append(legend);
+          }
+
+          componentLegends.append(legends);
+
+          totalWidth += componentWidth;
+
+          if (i + 1 < entry.keys.size()) {
+
+            totalWidth += separatorGap * 2 + separatorWidth;
+          }
+        }
+
+        qreal componentX = x + (draw.width - totalWidth) / 2.0;
+
+        /*
+         * Si por alguna razón el ancho calculado supera
+         * ligeramente el espacio reservado, lo centramos
+         * igualmente dentro de la entrada.
+         */
+        for (int i = 0; i < components.size(); ++i) {
+
+          if (i == components.size() - 1)
+            repeatBadgeX = componentX - 5;
+
+          QRectF componentRect(componentX, top, componentWidths.at(i),
+                               boxHeight);
+
+          drawKeycap(componentRect, components.at(i), componentLegends.at(i),
+                     true);
+
+          componentX += componentWidths.at(i);
+
+          if (i + 1 < components.size()) {
+
+            /*
+             * Separador +.
+             */
+            componentX += separatorGap;
+
+            p.setFont(mainFont);
+            p.setPen(secondaryColor);
+
+            QRectF plusRect(componentX, top, separatorWidth, boxHeight);
+
+            p.drawText(plusRect, Qt::AlignCenter, separator);
+
+            componentX += separatorWidth + separatorGap;
+          }
+        }
+
+      } else {
+
+        /*
+         * ---------------------------------------------------
+         * TECLA INDIVIDUAL
+         * ---------------------------------------------------
+         */
+
+        QRectF r(x, top, draw.width, boxHeight);
+
+        drawKeycap(r, draw.primary, draw.secondary, false);
+      }
+
+      /*
+       * -------------------------------------------------------
+       * Burbuja de repetición
+       * -------------------------------------------------------
+       */
+
+      if (entry.repeatCount > 1) {
+
+        const QString countText = QStringLiteral("×%1").arg(entry.repeatCount);
+
+        QFont badgeFont = QApplication::font();
+
+        badgeFont.setPixelSize(11);
+        badgeFont.setBold(true);
+
+        QFontMetrics badgeMetrics(badgeFont);
+
+        const int badgeWidth =
+            qMax(24, badgeMetrics.horizontalAdvance(countText) + 12);
+
+        const int badgeHeight = 19;
+
+        const qreal badgeScale =
+            age < 140 ? 1.0 + 0.18 * (1.0 - qBound(0.0, age / 140.0, 1.0))
+                      : 1.0;
+
+        const qreal scaledBadgeWidth = badgeWidth * badgeScale;
+
+        const qreal scaledBadgeHeight = badgeHeight * badgeScale;
+
+        QRectF badgeRect(repeatBadgeX, top - 7, scaledBadgeWidth,
+                         scaledBadgeHeight);
+
+        QRectF badgeShadow = badgeRect.adjusted(0, 2, 0, 3);
+
+        p.setPen(Qt::NoPen);
+
+        p.setBrush(QColor(0, 0, 0, 170));
+
+        p.drawRoundedRect(badgeShadow, 8.5, 8.5);
+
+        QLinearGradient badgeGradient(badgeRect.topLeft(),
+                                      badgeRect.bottomLeft());
+
+        badgeGradient.setColorAt(0.0, QColor(82, 84, 90, 245));
+
+        badgeGradient.setColorAt(1.0, QColor(42, 44, 49, 245));
+
+        p.setBrush(badgeGradient);
+
+        p.drawRoundedRect(badgeRect, 8.5, 8.5);
+
+        p.setBrush(Qt::NoBrush);
+
+        p.setPen(QPen(QColor(255, 255, 255, 70), 1.0));
+
+        p.drawRoundedRect(badgeRect.adjusted(0.5, 0.5, -0.5, -0.5), 8, 8);
+
+        p.setFont(badgeFont);
+
+        p.setPen(QColor(248, 248, 250, 235));
+
+        p.drawText(badgeRect, Qt::AlignCenter, countText);
+      }
+
+      p.restore();
+
+      x += draw.width + spacing;
+    }
+  }
+
+  void paintStatusIndicators(QPainter &p) {
+    enum class StatusIcon {
+      HideKeys,
+      Pause,
+      ClickThrough,
+      AlwaysOnTop,
+      OnlyShortcuts,
+      CapsLock,
+      NumLock,
+      ScrollLock
+    };
+
+    QVector<StatusIcon> items;
+
+    if (hideKeys)
+      items.append(StatusIcon::HideKeys);
+
+    if (pauseInput)
+      items.append(StatusIcon::Pause);
+
+    if (clickThrough)
+      items.append(StatusIcon::ClickThrough);
+
+    if (alwaysOnTop)
+      items.append(StatusIcon::AlwaysOnTop);
+
+    if (onlyShortcuts)
+      items.append(StatusIcon::OnlyShortcuts);
+
+    const bool capsLock = xkb.isReady() && xkb.ledActive("Caps Lock");
+
+    const bool numLock = xkb.isReady() && xkb.ledActive("Num Lock");
+
+    const bool scrollLock = xkb.isReady() && xkb.ledActive("Scroll Lock");
+
+    if (capsLock)
+      items.append(StatusIcon::CapsLock);
+
+    if (numLock)
+      items.append(StatusIcon::NumLock);
+
+    if (scrollLock)
+      items.append(StatusIcon::ScrollLock);
+
+    if (items.isEmpty())
+      return;
+
+    p.save();
+
+    p.setRenderHint(QPainter::Antialiasing, true);
+
+    const int size = 18;
+    const int spacing = 5;
+    const int rightMargin = 33;
+    const int topMargin = 5;
+
+    const QColor background(32, 34, 40, 175);
+    const QColor border(255, 255, 255, 48);
+    const QColor shadow(0, 0, 0, 85);
+    const QColor iconColor(248, 249, 251, 238);
+
+    const int totalWidth = items.size() * size + (items.size() - 1) * spacing;
+
+    int x = width() - rightMargin - totalWidth;
+
+    auto drawIcon = [&](QPainter &painter, const QRectF &rect,
+                        StatusIcon icon) {
+      const QPointF c = rect.center();
+
+      QPen pen(iconColor, 1.35, Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin);
+
+      painter.setPen(pen);
+      painter.setBrush(Qt::NoBrush);
+
+      switch (icon) {
+
+      case StatusIcon::HideKeys: {
+        // Candado
+        const QRectF body(c.x() - 4.0, c.y() - 0.5, 8.0, 6.5);
+
+        painter.drawRoundedRect(body, 1.5, 1.5);
+
+        QPainterPath shackle;
+        shackle.moveTo(c.x() - 3.0, c.y() - 0.5);
+        shackle.lineTo(c.x() - 3.0, c.y() - 2.5);
+        shackle.cubicTo(c.x() - 3.0, c.y() - 5.5, c.x() + 3.0, c.y() - 5.5,
+                        c.x() + 3.0, c.y() - 2.5);
+        shackle.lineTo(c.x() + 3.0, c.y() - 0.5);
+
+        painter.drawPath(shackle);
+        break;
+      }
+
+      case StatusIcon::Pause:
+        painter.drawRoundedRect(QRectF(c.x() - 3.8, c.y() - 5.0, 2.4, 10.0),
+                                1.0, 1.0);
+        painter.drawRoundedRect(QRectF(c.x() + 1.4, c.y() - 5.0, 2.4, 10.0),
+                                1.0, 1.0);
+        break;
+
+      case StatusIcon::ClickThrough: {
+        // Ratón
+        const QRectF mouse(c.x() - 4.0, c.y() - 5.5, 8.0, 11.0);
+
+        painter.drawRoundedRect(mouse, 3.5, 3.5);
+        painter.drawLine(QPointF(c.x(), c.y() - 5.0),
+                         QPointF(c.x(), c.y() + 5.0));
+        painter.drawLine(QPointF(c.x(), c.y() - 2.5),
+                         QPointF(c.x(), c.y() - 0.5));
+        break;
+      }
+
+      case StatusIcon::AlwaysOnTop: {
+        // Pin
+        QPolygonF pin;
+        pin << QPointF(c.x(), c.y() - 5.0) << QPointF(c.x() + 3.2, c.y() - 1.5)
+            << QPointF(c.x() + 1.2, c.y() + 0.5)
+            << QPointF(c.x() + 1.2, c.y() + 3.0)
+            << QPointF(c.x() - 1.2, c.y() + 3.0)
+            << QPointF(c.x() - 1.2, c.y() + 0.5)
+            << QPointF(c.x() - 3.2, c.y() - 1.5);
+
+        painter.drawPolygon(pin);
+
+        painter.drawLine(QPointF(c.x(), c.y() + 3.0),
+                         QPointF(c.x(), c.y() + 5.5));
+        break;
+      }
+
+      case StatusIcon::OnlyShortcuts: {
+        // ↯
+        QPolygonF bolt;
+        bolt << QPointF(c.x() + 1.5, c.y() - 6.0)
+             << QPointF(c.x() - 2.5, c.y() - 0.5) << QPointF(c.x(), c.y() - 0.5)
+             << QPointF(c.x() - 1.5, c.y() + 6.0)
+             << QPointF(c.x() + 2.5, c.y() + 0.5)
+             << QPointF(c.x(), c.y() + 0.5);
+
+        painter.drawPolygon(bolt);
+        break;
+      }
+
+      case StatusIcon::CapsLock: {
+        // ⇪
+        painter.drawRoundedRect(QRectF(c.x() - 5.0, c.y() + 0.5, 10.0, 4.5),
+                                1.0, 1.0);
+
+        painter.drawLine(QPointF(c.x(), c.y() + 0.5),
+                         QPointF(c.x(), c.y() - 5.0));
+
+        painter.drawLine(QPointF(c.x(), c.y() - 5.0),
+                         QPointF(c.x() - 2.5, c.y() - 2.5));
+
+        painter.drawLine(QPointF(c.x(), c.y() - 5.0),
+                         QPointF(c.x() + 2.5, c.y() - 2.5));
+        break;
+      }
+
+      case StatusIcon::NumLock: {
+        // Pequeño teclado numérico
+        const qreal cell = 2.2;
+        const qreal gap = 1.0;
+        const qreal total = cell * 3 + gap * 2;
+        const qreal startX = c.x() - total / 2.0;
+        const qreal startY = c.y() - total / 2.0;
+
+        for (int row = 0; row < 3; ++row) {
+          for (int col = 0; col < 3; ++col) {
+            painter.drawRoundedRect(QRectF(startX + col * (cell + gap),
+                                           startY + row * (cell + gap), cell,
+                                           cell),
+                                    0.5, 0.5);
+          }
+        }
+        break;
+      }
+
+      case StatusIcon::ScrollLock: {
+        // ⇳
+        painter.drawLine(QPointF(c.x(), c.y() - 5.5),
+                         QPointF(c.x(), c.y() + 5.5));
+
+        painter.drawLine(QPointF(c.x(), c.y() - 5.5),
+                         QPointF(c.x() - 2.3, c.y() - 3.0));
+
+        painter.drawLine(QPointF(c.x(), c.y() - 5.5),
+                         QPointF(c.x() + 2.3, c.y() - 3.0));
+
+        painter.drawLine(QPointF(c.x(), c.y() + 5.5),
+                         QPointF(c.x() - 2.3, c.y() + 3.0));
+
+        painter.drawLine(QPointF(c.x(), c.y() + 5.5),
+                         QPointF(c.x() + 2.3, c.y() + 3.0));
+        break;
+      }
+      }
+    };
+
+    for (const StatusIcon icon : items) {
+
+      const QRectF rect(x, topMargin, size, size);
+
+      // Sombra
+      p.setPen(Qt::NoPen);
+      p.setBrush(shadow);
+      p.drawRoundedRect(rect.adjusted(0, 1, 0, 2), 7, 7);
+
+      // Fondo fijo para ambos modos
+      p.setBrush(background);
+      p.drawRoundedRect(rect, 7, 7);
+
+      // Borde fijo
+      p.setBrush(Qt::NoBrush);
+      p.setPen(QPen(border, 1.0));
+      p.drawRoundedRect(rect.adjusted(0.5, 0.5, -0.5, -0.5), 6.5, 6.5);
+
+      // Icono
+      drawIcon(p, rect.adjusted(2.0, 2.0, -2.0, -2.0), icon);
+
+      x += size + spacing;
     }
 
-    void contextMenuEvent(QContextMenuEvent *event) override;
+    p.restore();
+  }
+
+  void contextMenuEvent(QContextMenuEvent *event) override;
 
 private:
+  /*
+   * -----------------------------------------------------------
+   * ESTADO REAL MULTIMEDIA
+   * -----------------------------------------------------------
+   *
+   * El icono no representa simplemente la última tecla pulsada.
+   * Se sincroniza con:
+   *
+   *   MPRIS -> PlaybackStatus
+   *   PipeWire -> estado de mute del sink por defecto
+   *
+   * De esta forma también detectamos cambios hechos con el ratón,
+   * botones del reproductor, auriculares, etc.
+   */
+  /*
+   * -----------------------------------------------------------
+   * ESTADOS REALES DEL SISTEMA
+   * -----------------------------------------------------------
+   *
+   * Las tarjetas multimedia/hardware no dependen únicamente de
+   * la última tecla pulsada. Consultamos el estado real:
+   *
+   *   MPRIS       -> reproducción / repeat / shuffle
+   *   PipeWire    -> volumen / mute / micrófono
+   *   NetworkMgr  -> Wi-Fi / WWAN
+   *   BlueZ       -> Bluetooth
+   *   rfkill      -> estado de radios
+   *   backlight   -> brillo
+   *   KWin        -> touchpad
+   *
+   * Esto permite que el overlay se actualice incluso cuando el
+   * usuario cambia el estado desde Plasma, el reproductor, etc.
+   */
+
+  QString mprisPlaybackStatus = QStringLiteral("Stopped");
+
+  QString mprisLoopStatus = QStringLiteral("None");
+
+  bool mprisShuffle = false;
+
+  bool realAudioMuted = false;
+  int realAudioVolumePercent = 0;
+
+  bool realMicMuted = false;
+  int realMicVolumePercent = 0;
+
+  bool wifiEnabled = false;
+  bool wifiHardwareEnabled = true;
+  bool wifiStateKnown = false;
+
+  bool wwanEnabled = false;
+  bool wwanHardwareEnabled = true;
+  bool wwanStateKnown = false;
+
+  bool bluetoothPowered = false;
+  bool bluetoothStateKnown = false;
+
+  bool allRadiosEnabled = true;
+  bool rfkillStateKnown = false;
+
+  int brightnessPercent = 0;
+
+  bool touchpadEnabled = true;
+  bool touchpadStateKnown = false;
+
+  QTimer mediaStateTimer;
+
+  void updateMediaState() {
+    /*
+     * -------------------------------------------------------
+     * Helper D-Bus genérico
+     * -------------------------------------------------------
+     */
+
+    auto readDBusProperty = [](const QDBusConnection &bus,
+                               const QString &service, const QString &path,
+                               const QString &interface,
+                               const QString &property) -> QVariant {
+      QDBusInterface props(service, path,
+                           QStringLiteral("org.freedesktop.DBus.Properties"),
+                           bus);
+
+      if (!props.isValid())
+        return QVariant();
+
+      const QDBusMessage reply =
+          props.call(QStringLiteral("Get"), interface, property);
+
+      if (reply.type() != QDBusMessage::ReplyMessage) {
+
+        return QVariant();
+      }
+
+      const QList<QVariant> args = reply.arguments();
+
+      if (args.isEmpty())
+        return QVariant();
+
+      const QVariant outer = args.first();
+
+      if (!outer.canConvert<QDBusVariant>())
+        return QVariant();
+
+      return qvariant_cast<QDBusVariant>(outer).variant();
+    };
 
     /*
-     * -----------------------------------------------------------
-     * ESTADO REAL MULTIMEDIA
-     * -----------------------------------------------------------
-     *
-     * El icono no representa simplemente la última tecla pulsada.
-     * Se sincroniza con:
-     *
-     *   MPRIS -> PlaybackStatus
-     *   PipeWire -> estado de mute del sink por defecto
-     *
-     * De esta forma también detectamos cambios hechos con el ratón,
-     * botones del reproductor, auriculares, etc.
+     * -------------------------------------------------------
+     * MPRIS
+     * -------------------------------------------------------
      */
+
+    QString playbackStatus = QStringLiteral("Stopped");
+
+    QString loopStatus = QStringLiteral("None");
+
+    bool shuffle = false;
+
+    QString activePlayer;
+
+    const QDBusConnection sessionBus = QDBusConnection::sessionBus();
+
+    QDBusConnectionInterface *busInterface = sessionBus.interface();
+
+    auto playerProperty = [&](const QString &service,
+                              const QString &property) -> QVariant {
+      return readDBusProperty(
+          sessionBus, service, QStringLiteral("/org/mpris/MediaPlayer2"),
+          QStringLiteral("org.mpris.MediaPlayer2.Player"), property);
+    };
+
+    auto readPlayerStatus = [&](const QString &service) -> QString {
+      return playerProperty(service, QStringLiteral("PlaybackStatus"))
+          .toString();
+    };
+
     /*
-     * -----------------------------------------------------------
-     * ESTADOS REALES DEL SISTEMA
-     * -----------------------------------------------------------
-     *
-     * Las tarjetas multimedia/hardware no dependen únicamente de
-     * la última tecla pulsada. Consultamos el estado real:
-     *
-     *   MPRIS       -> reproducción / repeat / shuffle
-     *   PipeWire    -> volumen / mute / micrófono
-     *   NetworkMgr  -> Wi-Fi / WWAN
-     *   BlueZ       -> Bluetooth
-     *   rfkill      -> estado de radios
-     *   backlight   -> brillo
-     *   KWin        -> touchpad
-     *
-     * Esto permite que el overlay se actualice incluso cuando el
-     * usuario cambia el estado desde Plasma, el reproductor, etc.
+     * playerctld representa el reproductor activo/reciente
+     * cuando está disponible.
      */
+    if (busInterface && busInterface->isServiceRegistered(QStringLiteral(
+                            "org.mpris.MediaPlayer2.playerctld"))) {
 
-    QString mprisPlaybackStatus =
-        QStringLiteral("Stopped");
+      const QString status =
+          readPlayerStatus(QStringLiteral("org.mpris.MediaPlayer2.playerctld"));
 
-    QString mprisLoopStatus =
-        QStringLiteral("None");
+      if (status == QStringLiteral("Playing") ||
+          status == QStringLiteral("Paused") ||
+          status == QStringLiteral("Stopped")) {
 
-    bool mprisShuffle = false;
+        activePlayer = QStringLiteral("org.mpris.MediaPlayer2.playerctld");
 
-    bool realAudioMuted = false;
-    int realAudioVolumePercent = 0;
-
-    bool realMicMuted = false;
-    int realMicVolumePercent = 0;
-
-    bool wifiEnabled = false;
-    bool wifiHardwareEnabled = true;
-    bool wifiStateKnown = false;
-
-    bool wwanEnabled = false;
-    bool wwanHardwareEnabled = true;
-    bool wwanStateKnown = false;
-
-    bool bluetoothPowered = false;
-    bool bluetoothStateKnown = false;
-
-    bool allRadiosEnabled = true;
-    bool rfkillStateKnown = false;
-
-    int brightnessPercent = 0;
-
-    bool touchpadEnabled = true;
-    bool touchpadStateKnown = false;
-
-    QTimer mediaStateTimer;
-
-    void updateMediaState()
-    {
-        /*
-         * -------------------------------------------------------
-         * Helper D-Bus genérico
-         * -------------------------------------------------------
-         */
-
-        auto readDBusProperty =
-            [](const QDBusConnection &bus,
-               const QString &service,
-               const QString &path,
-               const QString &interface,
-               const QString &property) -> QVariant {
-
-                QDBusInterface props(
-                    service,
-                    path,
-                    QStringLiteral(
-                        "org.freedesktop.DBus.Properties"
-                    ),
-                    bus
-                );
-
-                if (!props.isValid())
-                    return QVariant();
-
-                const QDBusMessage reply =
-                    props.call(
-                        QStringLiteral("Get"),
-                        interface,
-                        property
-                    );
-
-                if (reply.type() !=
-                    QDBusMessage::ReplyMessage) {
-
-                    return QVariant();
-                }
-
-                const QList<QVariant> args =
-                    reply.arguments();
-
-                if (args.isEmpty())
-                    return QVariant();
-
-                const QVariant outer =
-                    args.first();
-
-                if (!outer.canConvert<QDBusVariant>())
-                    return QVariant();
-
-                return qvariant_cast<QDBusVariant>(
-                    outer
-                ).variant();
-            };
-
-        /*
-         * -------------------------------------------------------
-         * MPRIS
-         * -------------------------------------------------------
-         */
-
-        QString playbackStatus =
-            QStringLiteral("Stopped");
-
-        QString loopStatus =
-            QStringLiteral("None");
-
-        bool shuffle = false;
-
-        QString activePlayer;
-
-        const QDBusConnection sessionBus =
-            QDBusConnection::sessionBus();
-
-        QDBusConnectionInterface *busInterface =
-            sessionBus.interface();
-
-        auto playerProperty =
-            [&](const QString &service,
-                const QString &property) -> QVariant {
-
-                return readDBusProperty(
-                    sessionBus,
-                    service,
-                    QStringLiteral(
-                        "/org/mpris/MediaPlayer2"
-                    ),
-                    QStringLiteral(
-                        "org.mpris.MediaPlayer2.Player"
-                    ),
-                    property
-                );
-            };
-
-        auto readPlayerStatus =
-            [&](const QString &service) -> QString {
-
-                return playerProperty(
-                    service,
-                    QStringLiteral("PlaybackStatus")
-                ).toString();
-            };
-
-        /*
-         * playerctld representa el reproductor activo/reciente
-         * cuando está disponible.
-         */
-        if (busInterface &&
-            busInterface->isServiceRegistered(
-                QStringLiteral(
-                    "org.mpris.MediaPlayer2.playerctld"
-                ))) {
-
-            const QString status =
-                readPlayerStatus(
-                    QStringLiteral(
-                        "org.mpris.MediaPlayer2.playerctld"
-                    )
-                );
-
-            if (status == QStringLiteral("Playing") ||
-                status == QStringLiteral("Paused") ||
-                status == QStringLiteral("Stopped")) {
-
-                activePlayer =
-                    QStringLiteral(
-                        "org.mpris.MediaPlayer2.playerctld"
-                    );
-
-                playbackStatus = status;
-            }
-        }
-
-        /*
-         * Fallback: buscamos un reproductor reproduciendo.
-         */
-        if (activePlayer.isEmpty() &&
-            busInterface) {
-
-            const QStringList services =
-                busInterface->registeredServiceNames();
-
-            QString pausedPlayer;
-
-            for (const QString &service : services) {
-
-                if (!service.startsWith(
-                        QStringLiteral(
-                            "org.mpris.MediaPlayer2."
-                        )
-                    )) {
-
-                    continue;
-                }
-
-                if (service ==
-                    QStringLiteral(
-                        "org.mpris.MediaPlayer2.playerctld"
-                    )) {
-
-                    continue;
-                }
-
-                const QString status =
-                    readPlayerStatus(service);
-
-                if (status == QStringLiteral("Playing")) {
-
-                    activePlayer = service;
-                    playbackStatus = status;
-                    break;
-                }
-
-                if (status == QStringLiteral("Paused") &&
-                    pausedPlayer.isEmpty()) {
-
-                    pausedPlayer = service;
-                }
-            }
-
-            if (activePlayer.isEmpty() &&
-                !pausedPlayer.isEmpty()) {
-
-                activePlayer = pausedPlayer;
-                playbackStatus =
-                    QStringLiteral("Paused");
-            }
-        }
-
-        if (!activePlayer.isEmpty()) {
-
-            const QString detectedLoop =
-                playerProperty(
-                    activePlayer,
-                    QStringLiteral("LoopStatus")
-                ).toString();
-
-            if (detectedLoop == QStringLiteral("None") ||
-                detectedLoop == QStringLiteral("Track") ||
-                detectedLoop == QStringLiteral("Playlist")) {
-
-                loopStatus = detectedLoop;
-            }
-
-            const QVariant shuffleValue =
-                playerProperty(
-                    activePlayer,
-                    QStringLiteral("Shuffle")
-                );
-
-            if (shuffleValue.isValid())
-                shuffle = shuffleValue.toBool();
-        }
-
-        mprisPlaybackStatus =
-            playbackStatus;
-
-        mprisLoopStatus =
-            loopStatus;
-
-        mprisShuffle =
-            shuffle;
-
-        /*
-         * -------------------------------------------------------
-         * PIPEWIRE / VOLUMEN + MUTE
-         * -------------------------------------------------------
-         *
-         * wpctl get-volume devuelve el volumen como 0.0 = 0%,
-         * 1.0 = 100%, y puede superar 1.0 si hay amplificación.
-         *
-         * También añade [MUTED] cuando el nodo está muteado.
-         */
-
-        auto readWpctlVolume =
-            [](const QString &node,
-               int &percent,
-               bool &muted) -> bool {
-
-                QProcess process;
-
-                process.start(
-                    QStringLiteral("wpctl"),
-                    QStringList{
-                        QStringLiteral("get-volume"),
-                        node
-                    }
-                );
-
-                if (!process.waitForFinished(120))
-                    return false;
-
-                if (process.exitStatus() !=
-                    QProcess::NormalExit ||
-                    process.exitCode() != 0) {
-
-                    return false;
-                }
-
-                const QString output =
-                    QString::fromLocal8Bit(
-                        process.readAllStandardOutput()
-                    ).trimmed();
-
-                if (output.isEmpty())
-                    return false;
-
-                static const QRegularExpression re(
-                    QStringLiteral(
-                        R"(Volume:\s*([0-9]+(?:\.[0-9]+)?))"
-                    )
-                );
-
-                const QRegularExpressionMatch match =
-                    re.match(output);
-
-                if (!match.hasMatch())
-                    return false;
-
-                bool ok = false;
-
-                const double volume =
-                    match.captured(1).toDouble(&ok);
-
-                if (!ok)
-                    return false;
-
-                percent =
-                    qRound(volume * 100.0);
-
-                muted =
-                    output.contains(
-                        QStringLiteral("[MUTED]")
-                    );
-
-                return true;
-            };
-
-        int sinkVolume = realAudioVolumePercent;
-        bool sinkMuted = realAudioMuted;
-
-        if (readWpctlVolume(
-                QStringLiteral(
-                    "@DEFAULT_AUDIO_SINK@"
-                ),
-                sinkVolume,
-                sinkMuted)) {
-
-            realAudioVolumePercent =
-                sinkVolume;
-
-            realAudioMuted =
-                sinkMuted;
-        }
-
-        int sourceVolume =
-            realMicVolumePercent;
-
-        bool sourceMuted =
-            realMicMuted;
-
-        if (readWpctlVolume(
-                QStringLiteral(
-                    "@DEFAULT_AUDIO_SOURCE@"
-                ),
-                sourceVolume,
-                sourceMuted)) {
-
-            realMicVolumePercent =
-                sourceVolume;
-
-            realMicMuted =
-                sourceMuted;
-        }
-
-        /*
-         * -------------------------------------------------------
-         * NETWORKMANAGER / WIFI + WWAN
-         * -------------------------------------------------------
-         *
-         * NetworkManager diferencia:
-         *
-         *   WirelessEnabled
-         *   WirelessHardwareEnabled
-         *
-         * y lo mismo para WWAN.
-         *
-         * El segundo indica además si existe un bloqueo RF físico.
-         */
-
-        const QDBusConnection systemBus =
-            QDBusConnection::systemBus();
-
-        const QString nmService =
-            QStringLiteral(
-                "org.freedesktop.NetworkManager"
-            );
-
-        const QString nmPath =
-            QStringLiteral(
-                "/org/freedesktop/NetworkManager"
-            );
-
-        const QString nmInterface =
-            QStringLiteral(
-                "org.freedesktop.NetworkManager"
-            );
-
-        const QVariant networking =
-            readDBusProperty(
-                systemBus,
-                nmService,
-                nmPath,
-                nmInterface,
-                QStringLiteral(
-                    "NetworkingEnabled"
-                )
-            );
-
-        const QVariant nmWifi =
-            readDBusProperty(
-                systemBus,
-                nmService,
-                nmPath,
-                nmInterface,
-                QStringLiteral(
-                    "WirelessEnabled"
-                )
-            );
-
-        const QVariant nmWifiHw =
-            readDBusProperty(
-                systemBus,
-                nmService,
-                nmPath,
-                nmInterface,
-                QStringLiteral(
-                    "WirelessHardwareEnabled"
-                )
-            );
-
-        if (networking.isValid() &&
-            nmWifi.isValid() &&
-            nmWifiHw.isValid()) {
-
-            wifiEnabled =
-                networking.toBool() &&
-                nmWifi.toBool();
-
-            wifiHardwareEnabled =
-                nmWifiHw.toBool();
-
-            wifiStateKnown = true;
-        }
-
-        const QVariant nmWwan =
-            readDBusProperty(
-                systemBus,
-                nmService,
-                nmPath,
-                nmInterface,
-                QStringLiteral(
-                    "WwanEnabled"
-                )
-            );
-
-        const QVariant nmWwanHw =
-            readDBusProperty(
-                systemBus,
-                nmService,
-                nmPath,
-                nmInterface,
-                QStringLiteral(
-                    "WwanHardwareEnabled"
-                )
-            );
-
-        if (networking.isValid() &&
-            nmWwan.isValid() &&
-            nmWwanHw.isValid()) {
-
-            wwanEnabled =
-                networking.toBool() &&
-                nmWwan.toBool();
-
-            wwanHardwareEnabled =
-                nmWwanHw.toBool();
-
-            wwanStateKnown = true;
-        }
-
-        /*
-         * -------------------------------------------------------
-         * BLUETOOTH / BLUEZ
-         * -------------------------------------------------------
-         *
-         * Consultamos los adaptadores hci* y su propiedad Powered.
-         */
-
-        bool foundBluetooth =
-            false;
-
-        bool anyBluetoothPowered =
-            false;
-
-        const QStringList bluetoothAdapters =
-            QDir(
-                QStringLiteral(
-                    "/sys/class/bluetooth"
-                )
-            ).entryList(
-                QStringList{
-                    QStringLiteral("hci*")
-                },
-                QDir::Dirs |
-                QDir::NoDotAndDotDot
-            );
-
-        for (const QString &adapter :
-             bluetoothAdapters) {
-
-            const QVariant powered =
-                readDBusProperty(
-                    systemBus,
-                    QStringLiteral("org.bluez"),
-                    QStringLiteral(
-                        "/org/bluez/"
-                    ) + adapter,
-                    QStringLiteral(
-                        "org.bluez.Adapter1"
-                    ),
-                    QStringLiteral("Powered")
-                );
-
-            if (!powered.isValid())
-                continue;
-
-            foundBluetooth = true;
-
-            if (powered.toBool())
-                anyBluetoothPowered = true;
-        }
-
-        if (foundBluetooth) {
-
-            bluetoothPowered =
-                anyBluetoothPowered;
-
-            bluetoothStateKnown =
-                true;
-        }
-
-        /*
-         * -------------------------------------------------------
-         * RFKILL
-         * -------------------------------------------------------
-         *
-         * Si cualquier radio registrado está bloqueado, el estado
-         * global no está completamente habilitado.
-         */
-
-        bool foundRfkill =
-            false;
-
-        bool blockedRadio =
-            false;
-
-        const QDir rfkillDir(
-            QStringLiteral(
-                "/sys/class/rfkill"
-            )
-        );
-
-        const QStringList rfkillEntries =
-            rfkillDir.entryList(
-                QStringList{
-                    QStringLiteral("rfkill*")
-                },
-                QDir::Dirs |
-                QDir::NoDotAndDotDot
-            );
-
-        for (const QString &entry :
-             rfkillEntries) {
-
-            const QString base =
-                rfkillDir.filePath(entry);
-
-            QFile hardFile(
-                base +
-                QStringLiteral("/hard")
-            );
-
-            QFile softFile(
-                base +
-                QStringLiteral("/soft")
-            );
-
-            if (!hardFile.open(QIODevice::ReadOnly))
-                continue;
-
-            if (!softFile.open(QIODevice::ReadOnly))
-                continue;
-
-            const int hard =
-                hardFile.readAll()
-                    .trimmed()
-                    .toInt();
-
-            const int soft =
-                softFile.readAll()
-                    .trimmed()
-                    .toInt();
-
-            foundRfkill = true;
-
-            if (hard != 0 ||
-                soft != 0) {
-
-                blockedRadio = true;
-            }
-        }
-
-        if (foundRfkill) {
-
-            allRadiosEnabled =
-                !blockedRadio;
-
-            rfkillStateKnown =
-                true;
-        }
-
-        /*
-         * -------------------------------------------------------
-         * BRILLO
-         * -------------------------------------------------------
-         *
-         * /sys/class/backlight/<device>/brightness
-         * /sys/class/backlight/<device>/max_brightness
-         */
-
-        const QDir backlightDir(
-            QStringLiteral(
-                "/sys/class/backlight"
-            )
-        );
-
-        const QStringList backlights =
-            backlightDir.entryList(
-                QDir::Dirs |
-                QDir::NoDotAndDotDot
-            );
-
-        int selectedBrightness =
-            -1;
-
-        int selectedMaximum =
-            -1;
-
-        for (const QString &device :
-             backlights) {
-
-            const QString base =
-                backlightDir.filePath(device);
-
-            QFile brightnessFile(
-                base +
-                QStringLiteral("/brightness")
-            );
-
-            QFile maximumFile(
-                base +
-                QStringLiteral("/max_brightness")
-            );
-
-            if (!brightnessFile.open(
-                    QIODevice::ReadOnly
-                )) {
-
-                continue;
-            }
-
-            if (!maximumFile.open(
-                    QIODevice::ReadOnly
-                )) {
-
-                continue;
-            }
-
-            bool okBrightness = false;
-            bool okMaximum = false;
-
-            const int current =
-                QString::fromLatin1(
-                    brightnessFile.readAll()
-                ).trimmed().toInt(
-                    &okBrightness
-                );
-
-            const int maximum =
-                QString::fromLatin1(
-                    maximumFile.readAll()
-                ).trimmed().toInt(
-                    &okMaximum
-                );
-
-            if (!okBrightness ||
-                !okMaximum ||
-                maximum <= 0) {
-
-                continue;
-            }
-
-            selectedBrightness = current;
-            selectedMaximum = maximum;
-
-            /*
-             * Normalmente solo existe un backlight. Si hay varios,
-             * usamos el primero válido.
-             */
-            break;
-        }
-
-        if (selectedMaximum > 0) {
-
-            brightnessPercent =
-                qRound(
-                    100.0 *
-                    static_cast<double>(
-                        selectedBrightness
-                    ) /
-                    static_cast<double>(
-                        selectedMaximum
-                    )
-                );
-
-            brightnessPercent =
-                qBound(
-                    0,
-                    brightnessPercent,
-                    100
-                );
-
-        }
-
-        /*
-         * -------------------------------------------------------
-         * TOUCHPAD / KWIN
-         * -------------------------------------------------------
-         *
-         * KWin expone los dispositivos de entrada por D-Bus.
-         * Buscamos los que tienen touchpad == true y leemos
-         * enabled.
-         */
-
-        QDBusInterface kwinManager(
-            QStringLiteral("org.kde.KWin"),
-            QStringLiteral(
-                "/org/kde/KWin/InputDevice"
-            ),
-            QStringLiteral(
-                "org.freedesktop.DBus.Properties"
-            ),
-            sessionBus
-        );
-
-        if (kwinManager.isValid()) {
-
-            const QDBusMessage reply =
-                kwinManager.call(
-                    QStringLiteral("Get"),
-                    QStringLiteral(
-                        "org.kde.KWin.InputDeviceManager"
-                    ),
-                    QStringLiteral(
-                        "devicesSysNames"
-                    )
-                );
-
-            if (reply.type() ==
-                    QDBusMessage::ReplyMessage &&
-                !reply.arguments().isEmpty()) {
-
-                const QVariant outer =
-                    reply.arguments().first();
-
-                if (outer.canConvert<QDBusVariant>()) {
-
-                    const QVariant devicesVariant =
-                        qvariant_cast<QDBusVariant>(
-                            outer
-                        ).variant();
-
-                    const QStringList devices =
-                        devicesVariant.toStringList();
-
-                    bool foundTouchpad =
-                        false;
-
-                    bool enabled =
-                        true;
-
-                    for (const QString &device :
-                         devices) {
-
-                        const QString path =
-                            QStringLiteral(
-                                "/org/kde/KWin/InputDevice/"
-                            ) +
-                            device;
-
-                        const QVariant isTouchpad =
-                            readDBusProperty(
-                                sessionBus,
-                                QStringLiteral(
-                                    "org.kde.KWin"
-                                ),
-                                path,
-                                QStringLiteral(
-                                    "org.kde.KWin.InputDevice"
-                                ),
-                                QStringLiteral(
-                                    "touchpad"
-                                )
-                            );
-
-                        if (!isTouchpad.isValid() ||
-                            !isTouchpad.toBool()) {
-
-                            continue;
-                        }
-
-                        const QVariant deviceEnabled =
-                            readDBusProperty(
-                                sessionBus,
-                                QStringLiteral(
-                                    "org.kde.KWin"
-                                ),
-                                path,
-                                QStringLiteral(
-                                    "org.kde.KWin.InputDevice"
-                                ),
-                                QStringLiteral(
-                                    "enabled"
-                                )
-                            );
-
-                        if (!deviceEnabled.isValid())
-                            continue;
-
-                        foundTouchpad = true;
-
-                        if (!deviceEnabled.toBool()) {
-                            enabled = false;
-                            break;
-                        }
-                    }
-
-                    if (foundTouchpad) {
-
-                        touchpadEnabled =
-                            enabled;
-
-                        touchpadStateKnown =
-                            true;
-                    }
-                }
-            }
-        }
-
-        /*
-         * -------------------------------------------------------
-         * ACTUALIZAR ENTRADAS VISIBLES
-         * -------------------------------------------------------
-         *
-         * Las tarjetas que siguen en pantalla se sincronizan con
-         * el estado real aunque el cambio haya ocurrido fuera de
-         * KeyCast.
-         */
-
-        const QString volumeText =
-            QStringLiteral(
-                "%1 %2%"
-            ).arg(
-                realAudioMuted
-                    ? QStringLiteral("🔇")
-                    : QStringLiteral("🔊")
-            ).arg(
-                realAudioVolumePercent
-            );
-
-        const QString micText =
-            QStringLiteral(
-                "%1 %2%"
-            ).arg(
-                realMicMuted
-                    ? QStringLiteral("🔇")
-                    : QStringLiteral("🎙")
-            ).arg(
-                realMicVolumePercent
-            );
-
-        const QString playbackText =
-            mprisPlaybackStatus ==
-                QStringLiteral("Playing")
-                ? QStringLiteral("Ⅱ")
-                : QStringLiteral("▶");
-
-        QString repeatText =
-            QStringLiteral("↻");
-
-        if (mprisLoopStatus ==
-            QStringLiteral("Playlist")) {
-
-            repeatText =
-                QStringLiteral("↻∞");
-
-        } else if (mprisLoopStatus ==
-                   QStringLiteral("None")) {
-
-            repeatText =
-                QStringLiteral("↻");
-        }
-
-        const QString shuffleText =
-            mprisShuffle
-                ? QStringLiteral("🔀")
-                : QStringLiteral("⇄");
-
-        const QString brightnessText =
-            QStringLiteral(
-                "☀ %1%"
-            ).arg(
-                brightnessPercent
-            );
-
-        const QString wifiText =
-            wifiEnabled &&
-            wifiHardwareEnabled
-                ? QStringLiteral("📶")
-                : QStringLiteral("⊘");
-
-        const QString wwanText =
-            wwanEnabled &&
-            wwanHardwareEnabled
-                ? QStringLiteral("📡")
-                : QStringLiteral("⊘");
-
-        const QString bluetoothText =
-            bluetoothPowered
-                ? QStringLiteral("ᛒ")
-                : QStringLiteral("⊘");
-
-        const QString rfkillText =
-            allRadiosEnabled
-                ? QStringLiteral("📡")
-                : QStringLiteral("⊘");
-
-        const QString touchpadText =
-            touchpadEnabled
-                ? QStringLiteral("⌁")
-                : QStringLiteral("⊘");
-
-        for (auto &entry :
-             visualQueue) {
-
-            /*
-             * Mute / volumen
-             */
-            if (entry.linuxKeyCode == 113 ||
-                entry.linuxKeyCode == 114 ||
-                entry.linuxKeyCode == 115) {
-
-                entry.keys =
-                    QStringList{
-                        volumeText
-                    };
-            }
-
-            /*
-             * Mic mute
-             */
-            if (entry.linuxKeyCode == 248) {
-
-                entry.keys =
-                    QStringList{
-                        micText
-                    };
-            }
-
-            /*
-             * Play/Pause
-             */
-            if (entry.linuxKeyCode == 164 ||
-                entry.linuxKeyCode == 207) {
-
-                entry.keys =
-                    QStringList{
-                        playbackText
-                    };
-            }
-
-            /*
-             * Repeat
-             */
-            if (entry.linuxKeyCode == 439) {
-
-                entry.keys =
-                    QStringList{
-                        repeatText
-                    };
-            }
-
-            /*
-             * Shuffle
-             */
-            if (entry.linuxKeyCode == 410) {
-
-                entry.keys =
-                    QStringList{
-                        shuffleText
-                    };
-            }
-
-            /*
-             * Brillo:
-             *
-             * 224 = KEY_BRIGHTNESSDOWN
-             * 225 = KEY_BRIGHTNESSUP
-             * 243 = KEY_BRIGHTNESS_CYCLE
-             * 592 = KEY_BRIGHTNESS_MIN
-             * 593 = KEY_BRIGHTNESS_MAX
-             */
-            if (entry.linuxKeyCode == 224 ||
-                entry.linuxKeyCode == 225 ||
-                entry.linuxKeyCode == 243 ||
-                entry.linuxKeyCode == 592 ||
-                entry.linuxKeyCode == 593) {
-
-                entry.keys =
-                    QStringList{
-                        brightnessText
-                    };
-            }
-
-            /*
-             * Wi-Fi
-             */
-            if (entry.linuxKeyCode == 238 &&
-                wifiStateKnown) {
-
-                entry.keys =
-                    QStringList{
-                        wifiText
-                    };
-            }
-
-            /*
-             * WWAN
-             */
-            if (entry.linuxKeyCode == 246 &&
-                wwanStateKnown) {
-
-                entry.keys =
-                    QStringList{
-                        wwanText
-                    };
-            }
-
-            /*
-             * Bluetooth
-             */
-            if (entry.linuxKeyCode == 237 &&
-                bluetoothStateKnown) {
-
-                entry.keys =
-                    QStringList{
-                        bluetoothText
-                    };
-            }
-
-            /*
-             * RFKill
-             */
-            if (entry.linuxKeyCode == 247 &&
-                rfkillStateKnown) {
-
-                entry.keys =
-                    QStringList{
-                        rfkillText
-                    };
-            }
-
-            /*
-             * Touchpad:
-             *
-             * 530 = TOGGLE
-             * 531 = ON
-             * 532 = OFF
-             */
-            if ((entry.linuxKeyCode == 530 ||
-                 entry.linuxKeyCode == 531 ||
-                 entry.linuxKeyCode == 532) &&
-                touchpadStateKnown) {
-
-                entry.keys =
-                    QStringList{
-                        touchpadText
-                    };
-            }
-        }
+        playbackStatus = status;
+      }
     }
+
+    /*
+     * Fallback: buscamos un reproductor reproduciendo.
+     */
+    if (activePlayer.isEmpty() && busInterface) {
+
+      const QStringList services = busInterface->registeredServiceNames();
+
+      QString pausedPlayer;
+
+      for (const QString &service : services) {
+
+        if (!service.startsWith(QStringLiteral("org.mpris.MediaPlayer2."))) {
+
+          continue;
+        }
+
+        if (service == QStringLiteral("org.mpris.MediaPlayer2.playerctld")) {
+
+          continue;
+        }
+
+        const QString status = readPlayerStatus(service);
+
+        if (status == QStringLiteral("Playing")) {
+
+          activePlayer = service;
+          playbackStatus = status;
+          break;
+        }
+
+        if (status == QStringLiteral("Paused") && pausedPlayer.isEmpty()) {
+
+          pausedPlayer = service;
+        }
+      }
+
+      if (activePlayer.isEmpty() && !pausedPlayer.isEmpty()) {
+
+        activePlayer = pausedPlayer;
+        playbackStatus = QStringLiteral("Paused");
+      }
+    }
+
+    if (!activePlayer.isEmpty()) {
+
+      const QString detectedLoop =
+          playerProperty(activePlayer, QStringLiteral("LoopStatus")).toString();
+
+      if (detectedLoop == QStringLiteral("None") ||
+          detectedLoop == QStringLiteral("Track") ||
+          detectedLoop == QStringLiteral("Playlist")) {
+
+        loopStatus = detectedLoop;
+      }
+
+      const QVariant shuffleValue =
+          playerProperty(activePlayer, QStringLiteral("Shuffle"));
+
+      if (shuffleValue.isValid())
+        shuffle = shuffleValue.toBool();
+    }
+
+    mprisPlaybackStatus = playbackStatus;
+
+    mprisLoopStatus = loopStatus;
+
+    mprisShuffle = shuffle;
+
+    /*
+     * -------------------------------------------------------
+     * PIPEWIRE / VOLUMEN + MUTE
+     * -------------------------------------------------------
+     *
+     * wpctl get-volume devuelve el volumen como 0.0 = 0%,
+     * 1.0 = 100%, y puede superar 1.0 si hay amplificación.
+     *
+     * También añade [MUTED] cuando el nodo está muteado.
+     */
+
+    auto readWpctlVolume = [](const QString &node, int &percent,
+                              bool &muted) -> bool {
+      QProcess process;
+
+      process.start(QStringLiteral("wpctl"),
+                    QStringList{QStringLiteral("get-volume"), node});
+
+      if (!process.waitForFinished(120))
+        return false;
+
+      if (process.exitStatus() != QProcess::NormalExit ||
+          process.exitCode() != 0) {
+
+        return false;
+      }
+
+      const QString output =
+          QString::fromLocal8Bit(process.readAllStandardOutput()).trimmed();
+
+      if (output.isEmpty())
+        return false;
+
+      static const QRegularExpression re(
+          QStringLiteral(R"(Volume:\s*([0-9]+(?:\.[0-9]+)?))"));
+
+      const QRegularExpressionMatch match = re.match(output);
+
+      if (!match.hasMatch())
+        return false;
+
+      bool ok = false;
+
+      const double volume = match.captured(1).toDouble(&ok);
+
+      if (!ok)
+        return false;
+
+      percent = qRound(volume * 100.0);
+
+      muted = output.contains(QStringLiteral("[MUTED]"));
+
+      return true;
+    };
+
+    int sinkVolume = realAudioVolumePercent;
+    bool sinkMuted = realAudioMuted;
+
+    if (readWpctlVolume(QStringLiteral("@DEFAULT_AUDIO_SINK@"), sinkVolume,
+                        sinkMuted)) {
+
+      realAudioVolumePercent = sinkVolume;
+
+      realAudioMuted = sinkMuted;
+    }
+
+    int sourceVolume = realMicVolumePercent;
+
+    bool sourceMuted = realMicMuted;
+
+    if (readWpctlVolume(QStringLiteral("@DEFAULT_AUDIO_SOURCE@"), sourceVolume,
+                        sourceMuted)) {
+
+      realMicVolumePercent = sourceVolume;
+
+      realMicMuted = sourceMuted;
+    }
+
+    /*
+     * -------------------------------------------------------
+     * NETWORKMANAGER / WIFI + WWAN
+     * -------------------------------------------------------
+     *
+     * NetworkManager diferencia:
+     *
+     *   WirelessEnabled
+     *   WirelessHardwareEnabled
+     *
+     * y lo mismo para WWAN.
+     *
+     * El segundo indica además si existe un bloqueo RF físico.
+     */
+
+    const QDBusConnection systemBus = QDBusConnection::systemBus();
+
+    const QString nmService = QStringLiteral("org.freedesktop.NetworkManager");
+
+    const QString nmPath = QStringLiteral("/org/freedesktop/NetworkManager");
+
+    const QString nmInterface =
+        QStringLiteral("org.freedesktop.NetworkManager");
+
+    const QVariant networking =
+        readDBusProperty(systemBus, nmService, nmPath, nmInterface,
+                         QStringLiteral("NetworkingEnabled"));
+
+    const QVariant nmWifi =
+        readDBusProperty(systemBus, nmService, nmPath, nmInterface,
+                         QStringLiteral("WirelessEnabled"));
+
+    const QVariant nmWifiHw =
+        readDBusProperty(systemBus, nmService, nmPath, nmInterface,
+                         QStringLiteral("WirelessHardwareEnabled"));
+
+    if (networking.isValid() && nmWifi.isValid() && nmWifiHw.isValid()) {
+
+      wifiEnabled = networking.toBool() && nmWifi.toBool();
+
+      wifiHardwareEnabled = nmWifiHw.toBool();
+
+      wifiStateKnown = true;
+    }
+
+    const QVariant nmWwan =
+        readDBusProperty(systemBus, nmService, nmPath, nmInterface,
+                         QStringLiteral("WwanEnabled"));
+
+    const QVariant nmWwanHw =
+        readDBusProperty(systemBus, nmService, nmPath, nmInterface,
+                         QStringLiteral("WwanHardwareEnabled"));
+
+    if (networking.isValid() && nmWwan.isValid() && nmWwanHw.isValid()) {
+
+      wwanEnabled = networking.toBool() && nmWwan.toBool();
+
+      wwanHardwareEnabled = nmWwanHw.toBool();
+
+      wwanStateKnown = true;
+    }
+
+    /*
+     * -------------------------------------------------------
+     * BLUETOOTH / BLUEZ
+     * -------------------------------------------------------
+     *
+     * Consultamos los adaptadores hci* y su propiedad Powered.
+     */
+
+    bool foundBluetooth = false;
+
+    bool anyBluetoothPowered = false;
+
+    const QStringList bluetoothAdapters =
+        QDir(QStringLiteral("/sys/class/bluetooth"))
+            .entryList(QStringList{QStringLiteral("hci*")},
+                       QDir::Dirs | QDir::NoDotAndDotDot);
+
+    for (const QString &adapter : bluetoothAdapters) {
+
+      const QVariant powered = readDBusProperty(
+          systemBus, QStringLiteral("org.bluez"),
+          QStringLiteral("/org/bluez/") + adapter,
+          QStringLiteral("org.bluez.Adapter1"), QStringLiteral("Powered"));
+
+      if (!powered.isValid())
+        continue;
+
+      foundBluetooth = true;
+
+      if (powered.toBool())
+        anyBluetoothPowered = true;
+    }
+
+    if (foundBluetooth) {
+
+      bluetoothPowered = anyBluetoothPowered;
+
+      bluetoothStateKnown = true;
+    }
+
+    /*
+     * -------------------------------------------------------
+     * RFKILL
+     * -------------------------------------------------------
+     *
+     * Si cualquier radio registrado está bloqueado, el estado
+     * global no está completamente habilitado.
+     */
+
+    bool foundRfkill = false;
+
+    bool blockedRadio = false;
+
+    const QDir rfkillDir(QStringLiteral("/sys/class/rfkill"));
+
+    const QStringList rfkillEntries =
+        rfkillDir.entryList(QStringList{QStringLiteral("rfkill*")},
+                            QDir::Dirs | QDir::NoDotAndDotDot);
+
+    for (const QString &entry : rfkillEntries) {
+
+      const QString base = rfkillDir.filePath(entry);
+
+      QFile hardFile(base + QStringLiteral("/hard"));
+
+      QFile softFile(base + QStringLiteral("/soft"));
+
+      if (!hardFile.open(QIODevice::ReadOnly))
+        continue;
+
+      if (!softFile.open(QIODevice::ReadOnly))
+        continue;
+
+      const int hard = hardFile.readAll().trimmed().toInt();
+
+      const int soft = softFile.readAll().trimmed().toInt();
+
+      foundRfkill = true;
+
+      if (hard != 0 || soft != 0) {
+
+        blockedRadio = true;
+      }
+    }
+
+    if (foundRfkill) {
+
+      allRadiosEnabled = !blockedRadio;
+
+      rfkillStateKnown = true;
+    }
+
+    /*
+     * -------------------------------------------------------
+     * BRILLO
+     * -------------------------------------------------------
+     *
+     * /sys/class/backlight/<device>/brightness
+     * /sys/class/backlight/<device>/max_brightness
+     */
+
+    const QDir backlightDir(QStringLiteral("/sys/class/backlight"));
+
+    const QStringList backlights =
+        backlightDir.entryList(QDir::Dirs | QDir::NoDotAndDotDot);
+
+    int selectedBrightness = -1;
+
+    int selectedMaximum = -1;
+
+    for (const QString &device : backlights) {
+
+      const QString base = backlightDir.filePath(device);
+
+      QFile brightnessFile(base + QStringLiteral("/brightness"));
+
+      QFile maximumFile(base + QStringLiteral("/max_brightness"));
+
+      if (!brightnessFile.open(QIODevice::ReadOnly)) {
+
+        continue;
+      }
+
+      if (!maximumFile.open(QIODevice::ReadOnly)) {
+
+        continue;
+      }
+
+      bool okBrightness = false;
+      bool okMaximum = false;
+
+      const int current = QString::fromLatin1(brightnessFile.readAll())
+                              .trimmed()
+                              .toInt(&okBrightness);
+
+      const int maximum = QString::fromLatin1(maximumFile.readAll())
+                              .trimmed()
+                              .toInt(&okMaximum);
+
+      if (!okBrightness || !okMaximum || maximum <= 0) {
+
+        continue;
+      }
+
+      selectedBrightness = current;
+      selectedMaximum = maximum;
+
+      /*
+       * Normalmente solo existe un backlight. Si hay varios,
+       * usamos el primero válido.
+       */
+      break;
+    }
+
+    if (selectedMaximum > 0) {
+
+      brightnessPercent =
+          qRound(100.0 * static_cast<double>(selectedBrightness) /
+                 static_cast<double>(selectedMaximum));
+
+      brightnessPercent = qBound(0, brightnessPercent, 100);
+    }
+
+    /*
+     * -------------------------------------------------------
+     * TOUCHPAD / KWIN
+     * -------------------------------------------------------
+     *
+     * KWin expone los dispositivos de entrada por D-Bus.
+     * Buscamos los que tienen touchpad == true y leemos
+     * enabled.
+     */
+
+    QDBusInterface kwinManager(
+        QStringLiteral("org.kde.KWin"),
+        QStringLiteral("/org/kde/KWin/InputDevice"),
+        QStringLiteral("org.freedesktop.DBus.Properties"), sessionBus);
+
+    if (kwinManager.isValid()) {
+
+      const QDBusMessage reply =
+          kwinManager.call(QStringLiteral("Get"),
+                           QStringLiteral("org.kde.KWin.InputDeviceManager"),
+                           QStringLiteral("devicesSysNames"));
+
+      if (reply.type() == QDBusMessage::ReplyMessage &&
+          !reply.arguments().isEmpty()) {
+
+        const QVariant outer = reply.arguments().first();
+
+        if (outer.canConvert<QDBusVariant>()) {
+
+          const QVariant devicesVariant =
+              qvariant_cast<QDBusVariant>(outer).variant();
+
+          const QStringList devices = devicesVariant.toStringList();
+
+          bool foundTouchpad = false;
+
+          bool enabled = true;
+
+          for (const QString &device : devices) {
+
+            const QString path =
+                QStringLiteral("/org/kde/KWin/InputDevice/") + device;
+
+            const QVariant isTouchpad = readDBusProperty(
+                sessionBus, QStringLiteral("org.kde.KWin"), path,
+                QStringLiteral("org.kde.KWin.InputDevice"),
+                QStringLiteral("touchpad"));
+
+            if (!isTouchpad.isValid() || !isTouchpad.toBool()) {
+
+              continue;
+            }
+
+            const QVariant deviceEnabled = readDBusProperty(
+                sessionBus, QStringLiteral("org.kde.KWin"), path,
+                QStringLiteral("org.kde.KWin.InputDevice"),
+                QStringLiteral("enabled"));
+
+            if (!deviceEnabled.isValid())
+              continue;
+
+            foundTouchpad = true;
+
+            if (!deviceEnabled.toBool()) {
+              enabled = false;
+              break;
+            }
+          }
+
+          if (foundTouchpad) {
+
+            touchpadEnabled = enabled;
+
+            touchpadStateKnown = true;
+          }
+        }
+      }
+    }
+
+    /*
+     * -------------------------------------------------------
+     * ACTUALIZAR ENTRADAS VISIBLES
+     * -------------------------------------------------------
+     *
+     * Las tarjetas que siguen en pantalla se sincronizan con
+     * el estado real aunque el cambio haya ocurrido fuera de
+     * KeyCast.
+     */
+
+    const QString volumeText =
+        QStringLiteral("%1 %2%")
+            .arg(realAudioMuted ? QStringLiteral("🔇") : QStringLiteral("🔊"))
+            .arg(realAudioVolumePercent);
+
+    const QString micText =
+        QStringLiteral("%1 %2%")
+            .arg(realMicMuted ? QStringLiteral("🔇") : QStringLiteral("🎙"))
+            .arg(realMicVolumePercent);
+
+    const QString playbackText =
+        mprisPlaybackStatus == QStringLiteral("Playing") ? QStringLiteral("Ⅱ")
+                                                         : QStringLiteral("▶");
+
+    QString repeatText = QStringLiteral("↻");
+
+    if (mprisLoopStatus == QStringLiteral("Playlist")) {
+
+      repeatText = QStringLiteral("↻∞");
+
+    } else if (mprisLoopStatus == QStringLiteral("None")) {
+
+      repeatText = QStringLiteral("↻");
+    }
+
+    const QString shuffleText =
+        mprisShuffle ? QStringLiteral("🔀") : QStringLiteral("⇄");
+
+    const QString brightnessText =
+        QStringLiteral("☀ %1%").arg(brightnessPercent);
+
+    const QString wifiText = wifiEnabled && wifiHardwareEnabled
+                                 ? QStringLiteral("📶")
+                                 : QStringLiteral("⊘");
+
+    const QString wwanText = wwanEnabled && wwanHardwareEnabled
+                                 ? QStringLiteral("📡")
+                                 : QStringLiteral("⊘");
+
+    const QString bluetoothText =
+        bluetoothPowered ? QStringLiteral("ᛒ") : QStringLiteral("⊘");
+
+    const QString rfkillText =
+        allRadiosEnabled ? QStringLiteral("📡") : QStringLiteral("⊘");
+
+    const QString touchpadText =
+        touchpadEnabled ? QStringLiteral("⌁") : QStringLiteral("⊘");
+
+    for (auto &entry : visualQueue) {
+
+      /*
+       * Mute / volumen
+       */
+      if (entry.linuxKeyCode == 113 || entry.linuxKeyCode == 114 ||
+          entry.linuxKeyCode == 115) {
+
+        entry.keys = QStringList{volumeText};
+      }
+
+      /*
+       * Mic mute
+       */
+      if (entry.linuxKeyCode == 248) {
+
+        entry.keys = QStringList{micText};
+      }
+
+      /*
+       * Play/Pause
+       */
+      if (entry.linuxKeyCode == 164 || entry.linuxKeyCode == 207) {
+
+        entry.keys = QStringList{playbackText};
+      }
+
+      /*
+       * Repeat
+       */
+      if (entry.linuxKeyCode == 439) {
+
+        entry.keys = QStringList{repeatText};
+      }
+
+      /*
+       * Shuffle
+       */
+      if (entry.linuxKeyCode == 410) {
+
+        entry.keys = QStringList{shuffleText};
+      }
+
+      /*
+       * Brillo:
+       *
+       * 224 = KEY_BRIGHTNESSDOWN
+       * 225 = KEY_BRIGHTNESSUP
+       * 243 = KEY_BRIGHTNESS_CYCLE
+       * 592 = KEY_BRIGHTNESS_MIN
+       * 593 = KEY_BRIGHTNESS_MAX
+       */
+      if (entry.linuxKeyCode == 224 || entry.linuxKeyCode == 225 ||
+          entry.linuxKeyCode == 243 || entry.linuxKeyCode == 592 ||
+          entry.linuxKeyCode == 593) {
+
+        entry.keys = QStringList{brightnessText};
+      }
+
+      /*
+       * Wi-Fi
+       */
+      if (entry.linuxKeyCode == 238 && wifiStateKnown) {
+
+        entry.keys = QStringList{wifiText};
+      }
+
+      /*
+       * WWAN
+       */
+      if (entry.linuxKeyCode == 246 && wwanStateKnown) {
+
+        entry.keys = QStringList{wwanText};
+      }
+
+      /*
+       * Bluetooth
+       */
+      if (entry.linuxKeyCode == 237 && bluetoothStateKnown) {
+
+        entry.keys = QStringList{bluetoothText};
+      }
+
+      /*
+       * RFKill
+       */
+      if (entry.linuxKeyCode == 247 && rfkillStateKnown) {
+
+        entry.keys = QStringList{rfkillText};
+      }
+
+      /*
+       * Touchpad:
+       *
+       * 530 = TOGGLE
+       * 531 = ON
+       * 532 = OFF
+       */
+      if ((entry.linuxKeyCode == 530 || entry.linuxKeyCode == 531 ||
+           entry.linuxKeyCode == 532) &&
+          touchpadStateKnown) {
+
+        entry.keys = QStringList{touchpadText};
+      }
+    }
+  }
 
 private:
+  // ---------------------------------------------------------------
+  // Linux / XKB
+  // ---------------------------------------------------------------
 
-    // ---------------------------------------------------------------
-    // Linux / XKB
-    // ---------------------------------------------------------------
+  static bool isModifier(const QString &key) {
+    return key == QStringLiteral("KEY_LEFTCTRL") ||
+           key == QStringLiteral("KEY_RIGHTCTRL") ||
+           key == QStringLiteral("KEY_LEFTALT") ||
+           key == QStringLiteral("KEY_RIGHTALT") ||
+           key == QStringLiteral("KEY_LEFTSHIFT") ||
+           key == QStringLiteral("KEY_RIGHTSHIFT") ||
+           key == QStringLiteral("KEY_LEFTMETA") ||
+           key == QStringLiteral("KEY_RIGHTMETA");
+  }
 
+  QString displayName(const QString &name) const {
+    static const QHash<QString, QString> map = {
 
-    static bool isModifier(const QString &key)
-    {
-        return
-            key == QStringLiteral("KEY_LEFTCTRL") ||
-            key == QStringLiteral("KEY_RIGHTCTRL") ||
-            key == QStringLiteral("KEY_LEFTALT") ||
-            key == QStringLiteral("KEY_RIGHTALT") ||
-            key == QStringLiteral("KEY_LEFTSHIFT") ||
-            key == QStringLiteral("KEY_RIGHTSHIFT") ||
-            key == QStringLiteral("KEY_LEFTMETA") ||
-            key == QStringLiteral("KEY_RIGHTMETA");
+        {"KEY_LEFTCTRL", "Ctrl"},
+        {"KEY_RIGHTCTRL", "Ctrl"},
+
+        {"KEY_LEFTALT", "Alt"},
+        {"KEY_RIGHTALT", "AltGr"},
+
+        {"KEY_LEFTSHIFT", "Shift"},
+        {"KEY_RIGHTSHIFT", "Shift"},
+
+        {"KEY_LEFTMETA", "⌘"},
+        {"KEY_RIGHTMETA", "⌘"},
+
+        /*
+         * ---------------------------------------------------------------
+         * Teclas especiales compactas
+         * ---------------------------------------------------------------
+         */
+
+        {"KEY_ESC", "Esc"},
+        {"KEY_ENTER", "↵"},
+        {"KEY_BACKSPACE", "⌫"},
+        {"KEY_TAB", "⇥"},
+        {"KEY_SPACE", "␣"},
+        {"KEY_CAPSLOCK", "⇪"},
+
+        /*
+         * Navegación.
+         */
+
+        {"KEY_UP", "↑"},
+        {"KEY_DOWN", "↓"},
+        {"KEY_LEFT", "←"},
+        {"KEY_RIGHT", "→"},
+
+        {"KEY_HOME", "Home"},
+        {"KEY_END", "End"},
+        {"KEY_PAGEUP", "PgUp"},
+        {"KEY_PAGEDOWN", "PgDn"},
+
+        {"KEY_INSERT", "Ins"},
+        {"KEY_DELETE", "Del"},
+
+        /*
+         * Sistema.
+         */
+
+        {"KEY_PRINT", "PrtSc"},
+        {"KEY_SYSRQ", "SysRq"},
+        {"KEY_PAUSE", "Pause"},
+        {"KEY_SCROLLLOCK", "ScrLk"},
+        {"KEY_NUMLOCK", "Num"},
+
+        /*
+         * Función.
+         */
+
+        {"KEY_F1", "F1"},
+        {"KEY_F2", "F2"},
+        {"KEY_F3", "F3"},
+        {"KEY_F4", "F4"},
+        {"KEY_F5", "F5"},
+        {"KEY_F6", "F6"},
+        {"KEY_F7", "F7"},
+        {"KEY_F8", "F8"},
+        {"KEY_F9", "F9"},
+        {"KEY_F10", "F10"},
+        {"KEY_F11", "F11"},
+        {"KEY_F12", "F12"},
+
+        /*
+         * Ratón.
+         */
+
+        {"BTN_LEFT", "◀"},
+        {"BTN_RIGHT", "▶"},
+        {"BTN_MIDDLE", "●"},
+        {"BTN_WHEEL_UP", "Mouse Wheel Up"},
+        {"BTN_WHEEL_DOWN", "Mouse Wheel Down"},
+        {"BTN_WHEEL_LEFT", "Mouse Wheel Left"},
+        {"BTN_WHEEL_RIGHT", "Mouse Wheel Right"},
+        {"BTN_SIDE", "🖱4"},
+        {"BTN_EXTRA", "🖱5"}};
+
+    if (map.contains(name))
+      return map.value(name);
+
+    if (name.startsWith(QStringLiteral("KEY_"))) {
+
+      const QString key = name.mid(4);
+
+      if (key.size() == 1)
+        return key.toLower();
+
+      return key;
     }
 
+    return name;
+  }
 
-
-    QString displayName(
-        const QString &name
-    ) const
-    {
-        static const QHash<QString, QString> map = {
-
-    {"KEY_LEFTCTRL", "Ctrl"},
-    {"KEY_RIGHTCTRL", "Ctrl"},
-
-    {"KEY_LEFTALT", "Alt"},
-    {"KEY_RIGHTALT", "AltGr"},
-
-    {"KEY_LEFTSHIFT", "Shift"},
-    {"KEY_RIGHTSHIFT", "Shift"},
-
-    {"KEY_LEFTMETA", "⌘"},
-    {"KEY_RIGHTMETA", "⌘"},
-
-    /*
-     * ---------------------------------------------------------------
-     * Teclas especiales compactas
-     * ---------------------------------------------------------------
-     */
-
-    {"KEY_ESC", "Esc"},
-    {"KEY_ENTER", "↵"},
-    {"KEY_BACKSPACE", "⌫"},
-    {"KEY_TAB", "⇥"},
-    {"KEY_SPACE", "␣"},
-    {"KEY_CAPSLOCK", "⇪"},
-
-    /*
-     * Navegación.
-     */
-
-    {"KEY_UP", "↑"},
-    {"KEY_DOWN", "↓"},
-    {"KEY_LEFT", "←"},
-    {"KEY_RIGHT", "→"},
-
-    {"KEY_HOME", "Home"},
-    {"KEY_END", "End"},
-    {"KEY_PAGEUP", "PgUp"},
-    {"KEY_PAGEDOWN", "PgDn"},
-
-    {"KEY_INSERT", "Ins"},
-    {"KEY_DELETE", "Del"},
-
-    /*
-     * Sistema.
-     */
-
-    {"KEY_PRINT", "PrtSc"},
-    {"KEY_SYSRQ", "SysRq"},
-    {"KEY_PAUSE", "Pause"},
-    {"KEY_SCROLLLOCK", "ScrLk"},
-    {"KEY_NUMLOCK", "Num"},
-
-    /*
-     * Función.
-     */
-
-    {"KEY_F1", "F1"},
-    {"KEY_F2", "F2"},
-    {"KEY_F3", "F3"},
-    {"KEY_F4", "F4"},
-    {"KEY_F5", "F5"},
-    {"KEY_F6", "F6"},
-    {"KEY_F7", "F7"},
-    {"KEY_F8", "F8"},
-    {"KEY_F9", "F9"},
-    {"KEY_F10", "F10"},
-    {"KEY_F11", "F11"},
-    {"KEY_F12", "F12"},
-
-    /*
-     * Ratón.
-     */
-
-    {"BTN_LEFT", "◀"},
-    {"BTN_RIGHT", "▶"},
-    {"BTN_MIDDLE", "●"},
-    {"BTN_WHEEL_UP", "Mouse Wheel Up"},
-    {"BTN_WHEEL_DOWN", "Mouse Wheel Down"},
-    {"BTN_WHEEL_LEFT", "Mouse Wheel Left"},
-    {"BTN_WHEEL_RIGHT", "Mouse Wheel Right"},
-    {"BTN_SIDE", "🖱4"},
-    {"BTN_EXTRA", "🖱5"}
-};
-
-
-        if (map.contains(name))
-            return map.value(name);
-
-        if (name.startsWith(
-                QStringLiteral("KEY_"))) {
-
-            const QString key =
-                name.mid(4);
-
-            if (key.size() == 1)
-                return key.toLower();
-
-            return key;
-        }
-
-        return name;
-    }
-
-    QString compactDisplayName(
-    const QString &name
-) const
-{
+  QString compactDisplayName(const QString &name) const {
     static const QHash<QString, QString> map = {
 
         {"Ctrl", "⌃"},
@@ -3182,434 +2193,318 @@ private:
         {"Mouse Wheel Left", "◎←"},
         {"Mouse Wheel Right", "◎→"},
         {"Mouse 4", "◀4"},
-        {"Mouse 5", "▶5"}
-    };
+        {"Mouse 5", "▶5"}};
 
     if (map.contains(name))
-        return map.value(name);
+      return map.value(name);
 
     return name;
-}
+  }
 
+  QString translatedDisplayName(const QString &name) const {
+    static const QHash<QString, QString> map = {
+        {"Mouse Wheel Up", tr("Mouse wheel ↑")},
+        {"Mouse Wheel Down", tr("Mouse wheel ↓")},
+        {"Mouse Wheel Left", tr("Mouse wheel ←")},
+        {"Mouse Wheel Right", tr("Mouse wheel →")},
+        {"Wheel ↑", tr("Wheel ↑")},
+        {"Wheel ↓", tr("Wheel ↓")},
+        {"Wheel ←", tr("Wheel ←")},
+        {"Wheel →", tr("Wheel →")}};
 
-    QString translatedDisplayName(
-        const QString &name
-    ) const
-    {
-        static const QHash<QString, QString> map = {
-            {"Mouse Wheel Up", tr("Mouse wheel ↑")},
-            {"Mouse Wheel Down", tr("Mouse wheel ↓")},
-            {"Mouse Wheel Left", tr("Mouse wheel ←")},
-            {"Mouse Wheel Right", tr("Mouse wheel →")},
-            {"Wheel ↑", tr("Wheel ↑")},
-            {"Wheel ↓", tr("Wheel ↓")},
-            {"Wheel ←", tr("Wheel ←")},
-            {"Wheel →", tr("Wheel →")}
-        };
+    return map.value(name, name);
+  }
 
-        return map.value(name, name);
+  /*
+   * ---------------------------------------------------------------
+   * Wayland keyboard
+   * ---------------------------------------------------------------
+   */
+
+  bool handleComposeKey(int linuxKeyCode, const QString &visualName) {
+    if (visualName.isEmpty())
+      return false;
+
+    if (!xkb.isReady())
+      return false;
+
+    const xkb_keysym_t keysym = xkb.keySym(linuxKeyCode);
+
+    if (keysym == XKB_KEY_NoSymbol)
+      return false;
+
+    const ComposeResult status = xkb.feedComposeKey(keysym);
+
+    if (status == ComposeResult::Ignored) {
+
+      return false;
     }
-
-
     /*
-     * ---------------------------------------------------------------
-     * Wayland keyboard
-     * ---------------------------------------------------------------
+     * -----------------------------------------------------------
+     * COMPOSING
+     * -----------------------------------------------------------
      */
 
-    bool handleComposeKey(
-        int linuxKeyCode,
-        const QString &visualName
-    )
-    {
-        if (visualName.isEmpty())
-            return false;
+    if (status == ComposeResult::Composing) {
 
-        if (!xkb.isReady())
-            return false;
+      composeSequence.append(visualName);
+      composeKeyLegends.append(xkbSecondaryLegends(linuxKeyCode, visualName));
 
-        const xkb_keysym_t keysym =
-            xkb.keySym(linuxKeyCode);
+      /*
+       * Primera tecla de la composición.
+       */
+      if (composeSequence.size() == 1) {
 
-        if (keysym == XKB_KEY_NoSymbol)
-            return false;
+        addKeyboardVisualEntry(QStringList{visualName}, false, linuxKeyCode);
 
-        const ComposeResult status =
-            xkb.feedComposeKey(keysym);
+        const int index = visualQueue.size() - 1;
 
-        if (status ==
-            ComposeResult::Ignored) {
+        if (index >= 0) {
 
-            return false;
-        }
-        /*
-         * -----------------------------------------------------------
-         * COMPOSING
-         * -----------------------------------------------------------
-         */
+          visualQueue[index].composePending = true;
 
-        if (status ==
-            ComposeResult::Composing) {
-
-            composeSequence.append(
-                visualName
-            );
-            composeKeyLegends.append(
-                xkbSecondaryLegends(
-                    linuxKeyCode,
-                    visualName
-                )
-            );
-
-            /*
-             * Primera tecla de la composición.
-             */
-            if (composeSequence.size() == 1) {
-
-                addKeyboardVisualEntry(
-                    QStringList{
-                        visualName
-                    },
-                    false,
-                    linuxKeyCode
-                );
-
-                const int index =
-                    visualQueue.size() - 1;
-
-                if (index >= 0) {
-
-                    visualQueue[index].composePending =
-                        true;
-
-                    visualQueue[index].expires =
-                        std::numeric_limits<qint64>::max();
-                }
-
-            /*
-             * Si Compose necesita más teclas,
-             * no añadimos otra tarjeta todavía.
-             */
-            }
-
-            update();
-
-            return true;
+          visualQueue[index].expires = std::numeric_limits<qint64>::max();
         }
 
         /*
-         * -----------------------------------------------------------
-         * COMPOSED
-         * -----------------------------------------------------------
+         * Si Compose necesita más teclas,
+         * no añadimos otra tarjeta todavía.
          */
+      }
 
-        if (status ==
-            ComposeResult::Composed) {
+      update();
 
-            composeSequence.append(
-                visualName
-            );
-            composeKeyLegends.append(
-                            xkbSecondaryLegends(
-                                linuxKeyCode,
-                                visualName
-                            )
-                        );
-
-
-
-            const int index =
-                findComposePendingEntry();
-
-            /*
-             * Ejemplo:
-             *
-             *     ´ + ´ -> ´
-             *
-             * La entrada pendiente ya representa ´.
-             * addVisualEntry() se encargará de convertirla
-             * en ´ ×2.
-             */
-            if (composeSequence.size() == 2 &&
-                composeSequence.at(0) ==
-                    composeSequence.at(1)) {
-
-                if (index >= 0)
-                    visualQueue[index].composePending =
-                        false;
-
-                resetComposeSequence();
-
-                addKeyboardVisualEntry(
-                    QStringList{
-                        visualName
-                    },
-                    false,
-                    linuxKeyCode
-                );
-
-                update();
-
-                return true;
-            }
-
-            /*
-             * Composición real:
-             *
-             *     ´ + a -> á
-             *
-             * Visualmente queremos conservar la secuencia.
-             */
-            if (index >= 0) {
-
-                VisualEntry &entry =
-                    visualQueue[index];
-
-                entry.keys =
-                    composeSequence;
-
-                entry.keySecondaryLegends.clear();
-
-                for (const QStringList &legends :
-                     composeKeyLegends) {
-
-                    entry.keySecondaryLegends.append(
-                        legends.join(
-                            QStringLiteral("\n")
-                        )
-                    );
-                }
-
-
-                entry.combination = true;
-                entry.repeatCount = 1;
-                entry.linuxKeyCode = -1;
-                entry.composePending = false;
-
-                entry.created =
-                    QDateTime::currentMSecsSinceEpoch();
-
-                entry.expires =
-                    entry.created + displayDurationMs;
-            }
-
-            resetComposeSequence();
-
-            update();
-
-            return true;
-        }
-
-        /*
-         * -----------------------------------------------------------
-         * CANCELLED
-         * -----------------------------------------------------------
-         */
-
-        if (status ==
-            ComposeResult::Cancelled) {
-
-            const int index =
-                findComposePendingEntry();
-
-            /*
-             * La dead key deja de ser "pendiente".
-             * Se conserva como pulsación normal.
-             */
-            if (index >= 0) {
-
-                VisualEntry &entry =
-                    visualQueue[index];
-
-                entry.composePending = false;
-
-                entry.expires =
-                    QDateTime::currentMSecsSinceEpoch()
-                    + displayDurationMs;
-            }
-
-            resetComposeSequence();
-
-            /*
-             * La tecla que canceló la composición
-             * vuelve al flujo normal.
-             */
-            return false;
-        }
-
-        return false;
-    }
-
-    void setupWaylandKeyboard()
-    {
-        if (!waylandConnection.connect())
-            return;
-
-        /*
-         * Obtenemos el teclado del seat.
-         */
-        if (!waylandKeyboard.start(
-                waylandConnection.seat()
-            )) {
-            qWarning()
-                << "KDE KeyCast: no se pudo obtener wl_keyboard";
-            return;
-        }
-
-        if (!waylandPointer.start(
-                [this](const QString &keyName, bool pressed) {
-                    if (pressed)
-                        addMouseButton(keyName);
-                })) {
-            qWarning()
-                << "Failed to initialise Wayland pointer";
-        }
-
-        /*
-         * Segundo roundtrip:
-         *
-         * fuerza la llegada del keymap, modifiers iniciales y repeat
-         * info.
-         */
-        if (!waylandConnection.roundtrip()) {
-
-            qWarning(
-                "KDE KeyCast: fallo obteniendo el keymap Wayland"
-            );
-
-            return;
-        }
-
-        /*
-         * Necesitamos procesar futuras notificaciones Wayland sin
-         * bloquear el event loop de Qt.
-         */
-        const int fd =
-            waylandConnection.socketFd();
-
-        if (fd >= 0) {
-
-            waylandNotifier =
-                new QSocketNotifier(
-                    fd,
-                    QSocketNotifier::Read,
-                    this
-                );
-
-            connect(
-                waylandNotifier,
-                &QSocketNotifier::activated,
-                this,
-               [this](qintptr) {
-
-
-                    if (!waylandConnection.display())
-                        return;
-
-                    if (!waylandConnection.dispatchPending())
-                        return;
-
-                    waylandConnection.flush();
-                }
-            );
-        }
-
-        qDebug()
-            << "KDE KeyCast: keymap XKB obtenido directamente de Wayland";
+      return true;
     }
 
     /*
-     * ---------------------------------------------------------------
-     * XKB state
-     * ---------------------------------------------------------------
+     * -----------------------------------------------------------
+     * COMPOSED
+     * -----------------------------------------------------------
      */
 
+    if (status == ComposeResult::Composed) {
 
-    QStringList xkbSecondaryLegends(
-        int linuxCode,
-        const QString &primary
-    ) const
-    {
-        return xkb.secondaryLegends(
-            linuxCode,
-            primary,
-            compactMode
-        );
-    }
+      composeSequence.append(visualName);
+      composeKeyLegends.append(xkbSecondaryLegends(linuxKeyCode, visualName));
 
+      const int index = findComposePendingEntry();
 
-    void resetComposeSequence()
-    {
-        xkb.resetComposeSequence();
+      /*
+       * Ejemplo:
+       *
+       *     ´ + ´ -> ´
+       *
+       * La entrada pendiente ya representa ´.
+       * addVisualEntry() se encargará de convertirla
+       * en ´ ×2.
+       */
+      if (composeSequence.size() == 2 &&
+          composeSequence.at(0) == composeSequence.at(1)) {
 
-        composeSequence.clear();
-        composeKeyLegends.clear();
-    }
+        if (index >= 0)
+          visualQueue[index].composePending = false;
 
-    int findComposePendingEntry() const
-    {
-        for (int i = visualQueue.size() - 1;
-             i >= 0;
-             --i) {
+        resetComposeSequence();
 
-            if (visualQueue[i].composePending)
-                return i;
+        addKeyboardVisualEntry(QStringList{visualName}, false, linuxKeyCode);
+
+        update();
+
+        return true;
+      }
+
+      /*
+       * Composición real:
+       *
+       *     ´ + a -> á
+       *
+       * Visualmente queremos conservar la secuencia.
+       */
+      if (index >= 0) {
+
+        VisualEntry &entry = visualQueue[index];
+
+        entry.keys = composeSequence;
+
+        entry.keySecondaryLegends.clear();
+
+        for (const QStringList &legends : composeKeyLegends) {
+
+          entry.keySecondaryLegends.append(legends.join(QStringLiteral("\n")));
         }
 
-        return -1;
+        entry.combination = true;
+        entry.repeatCount = 1;
+        entry.linuxKeyCode = -1;
+        entry.composePending = false;
+
+        entry.created = QDateTime::currentMSecsSinceEpoch();
+
+        entry.expires = entry.created + displayDurationMs;
+      }
+
+      resetComposeSequence();
+
+      update();
+
+      return true;
     }
 
-    QString xkbDisplayName(
-        int linuxCode,
-        const QString &fallbackName
-    )
-    {
-        if (!xkb.isReady() || linuxCode < 0)
-            return displayName(fallbackName);
+    /*
+     * -----------------------------------------------------------
+     * CANCELLED
+     * -----------------------------------------------------------
+     */
 
-        const QString result =
-            xkb.displayName(linuxCode, fallbackName);
+    if (status == ComposeResult::Cancelled) {
 
-        if (!result.isEmpty() &&
-            result != fallbackName) {
-            return result;
-        }
+      const int index = findComposePendingEntry();
 
-        return displayName(fallbackName);
+      /*
+       * La dead key deja de ser "pendiente".
+       * Se conserva como pulsación normal.
+       */
+      if (index >= 0) {
+
+        VisualEntry &entry = visualQueue[index];
+
+        entry.composePending = false;
+
+        entry.expires = QDateTime::currentMSecsSinceEpoch() + displayDurationMs;
+      }
+
+      resetComposeSequence();
+
+      /*
+       * La tecla que canceló la composición
+       * vuelve al flujo normal.
+       */
+      return false;
     }
 
-    void trimVisualQueue()
-    {
-        const qint64 now =
-            QDateTime::currentMSecsSinceEpoch();
+    return false;
+  }
 
-        while (!visualQueue.isEmpty() &&
-               visualQueue.first().expires <= now) {
+  void setupWaylandKeyboard() {
+    if (!waylandConnection.connect())
+      return;
 
-            visualQueue.removeFirst();
-        }
+    /*
+     * Obtenemos el teclado del seat.
+     */
+    if (!waylandKeyboard.start(waylandConnection.seat())) {
+      qWarning() << "KDE KeyCast: no se pudo obtener wl_keyboard";
+      return;
     }
 
+    if (!waylandPointer.start([this](const QString &keyName, bool pressed) {
+          if (pressed)
+            addMouseButton(keyName);
+        })) {
+      qWarning() << "Failed to initialise Wayland pointer";
+    }
 
-    void addVisualEntry(
-    const QStringList &keys,
-    bool combination,
-    int linuxKeyCode = -1
-)
-{
+    /*
+     * Segundo roundtrip:
+     *
+     * fuerza la llegada del keymap, modifiers iniciales y repeat
+     * info.
+     */
+    if (!waylandConnection.roundtrip()) {
 
+      qWarning("KDE KeyCast: fallo obteniendo el keymap Wayland");
+
+      return;
+    }
+
+    /*
+     * Necesitamos procesar futuras notificaciones Wayland sin
+     * bloquear el event loop de Qt.
+     */
+    const int fd = waylandConnection.socketFd();
+
+    if (fd >= 0) {
+
+      waylandNotifier = new QSocketNotifier(fd, QSocketNotifier::Read, this);
+
+      connect(waylandNotifier, &QSocketNotifier::activated, this,
+              [this](qintptr) {
+                if (!waylandConnection.display())
+                  return;
+
+                if (!waylandConnection.dispatchPending())
+                  return;
+
+                waylandConnection.flush();
+              });
+    }
+
+    qDebug() << "KDE KeyCast: keymap XKB obtenido directamente de Wayland";
+  }
+
+  /*
+   * ---------------------------------------------------------------
+   * XKB state
+   * ---------------------------------------------------------------
+   */
+
+  QStringList xkbSecondaryLegends(int linuxCode, const QString &primary) const {
+    return xkb.secondaryLegends(linuxCode, primary, compactMode);
+  }
+
+  void resetComposeSequence() {
+    xkb.resetComposeSequence();
+
+    composeSequence.clear();
+    composeKeyLegends.clear();
+  }
+
+  int findComposePendingEntry() const {
+    for (int i = visualQueue.size() - 1; i >= 0; --i) {
+
+      if (visualQueue[i].composePending)
+        return i;
+    }
+
+    return -1;
+  }
+
+  QString xkbDisplayName(int linuxCode, const QString &fallbackName) {
+    if (!xkb.isReady() || linuxCode < 0)
+      return displayName(fallbackName);
+
+    const QString result = xkb.displayName(linuxCode, fallbackName);
+
+    if (!result.isEmpty() && result != fallbackName) {
+      return result;
+    }
+
+    return displayName(fallbackName);
+  }
+
+  void trimVisualQueue() {
+    const qint64 now = QDateTime::currentMSecsSinceEpoch();
+
+    while (!visualQueue.isEmpty() && visualQueue.first().expires <= now) {
+
+      visualQueue.removeFirst();
+    }
+  }
+
+  void addVisualEntry(const QStringList &keys, bool combination,
+                      int linuxKeyCode = -1) {
 
     if (pauseInput)
-            return;
+      return;
 
     if (keys.isEmpty())
-        return;
+      return;
 
     if (onlyShortcuts && !combination)
-        return;
+      return;
 
-    const qint64 now =
-        QDateTime::currentMSecsSinceEpoch();
+    const qint64 now = QDateTime::currentMSecsSinceEpoch();
 
     /*
      * ---------------------------------------------------------------
@@ -3632,22 +2527,19 @@ private:
      * Las combinaciones no se agrupan.
      */
 
-    if (!combination &&
-        !visualQueue.isEmpty()) {
+    if (!combination && !visualQueue.isEmpty()) {
 
-        VisualEntry &last =
-            visualQueue.last();
+      VisualEntry &last = visualQueue.last();
 
-        if (!last.combination &&
-            last.keys == keys) {
+      if (!last.combination && last.keys == keys) {
 
-            last.repeatCount++;
-            last.expires = now + displayDurationMs;
+        last.repeatCount++;
+        last.expires = now + displayDurationMs;
 
-            update();
+        update();
 
-            return;
-        }
+        return;
+      }
     }
 
     VisualEntry entry;
@@ -3657,385 +2549,264 @@ private:
     entry.expires = now + displayDurationMs;
     entry.combination = combination;
     entry.repeatCount = 1;
-    entry.linuxKeyCode =
-        keys.size() == 1 && !combination
-            ? linuxKeyCode
-            : -1;
+    entry.linuxKeyCode = keys.size() == 1 && !combination ? linuxKeyCode : -1;
 
     visualQueue.append(entry);
 
     while (visualQueue.size() > 6)
-        visualQueue.removeFirst();
+      visualQueue.removeFirst();
 
     update();
-}
+  }
 
-void addKeyboardVisualEntry(
-    const QStringList &keys,
-    bool combination,
-    int linuxKeyCode = -1
-)
-{
-    addVisualEntry(
-        keys,
-        combination,
-        linuxKeyCode
-    );
+  void addKeyboardVisualEntry(const QStringList &keys, bool combination,
+                              int linuxKeyCode = -1) {
+    addVisualEntry(keys, combination, linuxKeyCode);
 
     if (!visualQueue.isEmpty()) {
-        visualQueue.last().keyboardEntry = true;
-        visualQueue.last().maskKeyboard = hideKeys;
+      visualQueue.last().keyboardEntry = true;
+      visualQueue.last().maskKeyboard = hideKeys;
+      update();
+    }
+  }
+
+  void addMouseButton(const QString &keyName) {
+    const QString visualName = displayName(keyName);
+
+    qDebug() << "KDE KeyCast addMouseButton:"
+             << "input=" << keyName << "display=" << visualName;
+
+    addVisualEntry(QStringList{visualName}, false);
+  }
+
+  void addMouseWheel(const QString &axisName, double axisValue) {
+
+    if (axisName.isEmpty() || qFuzzyIsNull(axisValue)) {
+      return;
+    }
+
+    const bool shiftPressed =
+        pressedModifiers.contains(QStringLiteral("KEY_LEFTSHIFT")) ||
+        pressedModifiers.contains(QStringLiteral("KEY_RIGHTSHIFT"));
+
+    QString label;
+
+    /*
+     * -----------------------------------------------------------
+     * Dirección visual de la rueda
+     * -----------------------------------------------------------
+     */
+
+    if (axisName == QStringLiteral("VERTICAL_SCROLL")) {
+
+      if (shiftPressed) {
+
+        label = axisValue < 0.0 ? (compactMode ? QStringLiteral("◎←")
+                                               : QStringLiteral("Wheel ←"))
+                                : (compactMode ? QStringLiteral("◎→")
+                                               : QStringLiteral("Wheel →"));
+
+      } else {
+
+        label = axisValue < 0.0 ? (compactMode ? QStringLiteral("◎↑")
+                                               : QStringLiteral("Wheel ↑"))
+                                : (compactMode ? QStringLiteral("◎↓")
+                                               : QStringLiteral("Wheel ↓"));
+      }
+
+    } else if (axisName == QStringLiteral("HORIZONTAL_SCROLL")) {
+
+      label = axisValue < 0.0 ? (compactMode ? QStringLiteral("◎←")
+                                             : QStringLiteral("Wheel ←"))
+                              : (compactMode ? QStringLiteral("◎→")
+                                             : QStringLiteral("Wheel →"));
+
+    } else {
+      return;
+    }
+
+    qDebug() << "KDE KeyCast wheel:" << axisName << axisValue << label
+             << "shift=" << shiftPressed;
+
+    if (pauseInput)
+      return;
+    /*
+     * -----------------------------------------------------------
+     * SHIFT + WHEEL
+     *
+     * Una única entrada de combinación:
+     *
+     *     [ Shift ] + [ Wheel ← ×3 ]
+     *
+     * El pintado de combinaciones ya proporciona la serigrafía
+     * ⇧ de Shift.
+     * -----------------------------------------------------------
+     */
+
+    if (shiftPressed) {
+
+      const QStringList keys{QStringLiteral("Shift"), label};
+
+      /*
+       * Buscar la combinación Shift + Wheel que ya está visible.
+       */
+      for (int i = visualQueue.size() - 1; i >= 0; --i) {
+
+        VisualEntry &entry = visualQueue[i];
+
+        if (!entry.combination || entry.keys.size() != 2 ||
+            entry.keys.first() != QStringLiteral("Shift")) {
+
+          continue;
+        }
+
+        const QString oldWheel = entry.keys.at(1);
+
+        const bool oldIsWheel = oldWheel.startsWith(QStringLiteral("Wheel ")) ||
+                                oldWheel.startsWith(QStringLiteral("◎"));
+
+        if (!oldIsWheel)
+          continue;
+
+        /*
+         * MISMA DIRECCIÓN:
+         *
+         * solamente incrementamos ×2, ×3...
+         */
+        if (oldWheel == label) {
+
+          entry.repeatCount++;
+
+          entry.expires =
+              QDateTime::currentMSecsSinceEpoch() + displayDurationMs;
+
+          update();
+
+          return;
+        }
+
+        /*
+         * DIRECCIÓN DISTINTA:
+         *
+         * sustituimos únicamente la rueda.
+         *
+         * Shift permanece en la misma entrada.
+         */
+        entry.keys[1] = label;
+
+        entry.repeatCount = 1;
+
+        entry.created = QDateTime::currentMSecsSinceEpoch();
+
+        entry.expires = entry.created + displayDurationMs;
+
         update();
-    }
-}
 
-    void addMouseButton(
-        const QString &keyName
-    )
-    {
-        const QString visualName =
-            displayName(keyName);
-
-        qDebug()
-            << "KDE KeyCast addMouseButton:"
-            << "input=" << keyName
-            << "display=" << visualName;
-
-        addVisualEntry(
-            QStringList{
-                visualName
-            },
-            false
-        );
-    }
-
-    void addMouseWheel(
-        const QString &axisName,
-        double axisValue
-    )
-    {
-
-        if (axisName.isEmpty() ||
-            qFuzzyIsNull(axisValue)) {
-            return;
-        }
-
-        const bool shiftPressed =
-            pressedModifiers.contains(
-                QStringLiteral("KEY_LEFTSHIFT")
-            ) ||
-            pressedModifiers.contains(
-                QStringLiteral("KEY_RIGHTSHIFT")
-            );
-
-        QString label;
-
-        /*
-         * -----------------------------------------------------------
-         * Dirección visual de la rueda
-         * -----------------------------------------------------------
-         */
-
-        if (axisName ==
-            QStringLiteral("VERTICAL_SCROLL")) {
-
-            if (shiftPressed) {
-
-                label =
-                    axisValue < 0.0
-                        ? (compactMode
-                            ? QStringLiteral("◎←")
-                            : QStringLiteral("Wheel ←"))
-                        : (compactMode
-                            ? QStringLiteral("◎→")
-                            : QStringLiteral("Wheel →"));
-
-            } else {
-
-                label =
-                    axisValue < 0.0
-                        ? (compactMode
-                            ? QStringLiteral("◎↑")
-                            : QStringLiteral("Wheel ↑"))
-                        : (compactMode
-                            ? QStringLiteral("◎↓")
-                            : QStringLiteral("Wheel ↓"));
-            }
-
-        } else if (
-            axisName ==
-            QStringLiteral("HORIZONTAL_SCROLL")) {
-
-            label =
-                axisValue < 0.0
-                    ? (compactMode
-                        ? QStringLiteral("◎←")
-                        : QStringLiteral("Wheel ←"))
-                    : (compactMode
-                        ? QStringLiteral("◎→")
-                        : QStringLiteral("Wheel →"));
-
-        } else {
-            return;
-        }
-
-        qDebug()
-            << "KDE KeyCast wheel:"
-            << axisName
-            << axisValue
-            << label
-            << "shift="
-            << shiftPressed;
-
-        if (pauseInput)
-            return;
-        /*
-         * -----------------------------------------------------------
-         * SHIFT + WHEEL
-         *
-         * Una única entrada de combinación:
-         *
-         *     [ Shift ] + [ Wheel ← ×3 ]
-         *
-         * El pintado de combinaciones ya proporciona la serigrafía
-         * ⇧ de Shift.
-         * -----------------------------------------------------------
-         */
-
-        if (shiftPressed) {
-
-            const QStringList keys{
-                QStringLiteral("Shift"),
-                label
-            };
-
-            /*
-             * Buscar la combinación Shift + Wheel que ya está visible.
-             */
-            for (int i = visualQueue.size() - 1;
-                 i >= 0;
-                 --i) {
-
-                VisualEntry &entry =
-                    visualQueue[i];
-
-                if (!entry.combination ||
-                    entry.keys.size() != 2 ||
-                    entry.keys.first() !=
-                        QStringLiteral("Shift")) {
-
-                    continue;
-                }
-
-                const QString oldWheel =
-                    entry.keys.at(1);
-
-                const bool oldIsWheel =
-                    oldWheel.startsWith(
-                        QStringLiteral("Wheel ")
-                    ) ||
-                    oldWheel.startsWith(
-                        QStringLiteral("◎")
-                    );
-
-                if (!oldIsWheel)
-                    continue;
-
-                /*
-                 * MISMA DIRECCIÓN:
-                 *
-                 * solamente incrementamos ×2, ×3...
-                 */
-                if (oldWheel == label) {
-
-                    entry.repeatCount++;
-
-                    entry.expires =
-                        QDateTime::currentMSecsSinceEpoch()
-                        + displayDurationMs;
-
-                    update();
-
-                    return;
-                }
-
-                /*
-                 * DIRECCIÓN DISTINTA:
-                 *
-                 * sustituimos únicamente la rueda.
-                 *
-                 * Shift permanece en la misma entrada.
-                 */
-                entry.keys[1] = label;
-
-                entry.repeatCount = 1;
-
-                entry.created =
-                    QDateTime::currentMSecsSinceEpoch();
-
-                entry.expires =
-                    entry.created + displayDurationMs;
-
-                update();
-
-                return;
-            }
-
-            /*
-             * Primera rueda con Shift.
-             */
-            VisualEntry entry;
-
-            entry.keys = keys;
-            entry.created =
-                QDateTime::currentMSecsSinceEpoch();
-
-            entry.expires =
-                entry.created + displayDurationMs;
-
-            entry.combination = true;
-            entry.repeatCount = 1;
-            entry.linuxKeyCode = -1;
-
-            visualQueue.append(entry);
-
-            while (visualQueue.size() > 6)
-                visualQueue.removeFirst();
-
-            update();
-
-            return;
-        }
-
-        /*
-         * -----------------------------------------------------------
-         * RUEDA NORMAL
-         * -----------------------------------------------------------
-         */
-
-        addVisualEntry(
-            QStringList{label},
-            false
-        );
-
-        qDebug()
-            << "KDE KeyCast wheel:"
-            << axisName
-            << axisValue
-            << label
-            << "shift="
-            << shiftPressed;
-    }
-    void finishCombination()
-    {
-        if (!combinationActive)
         return;
+      }
+
+      /*
+       * Primera rueda con Shift.
+       */
+      VisualEntry entry;
+
+      entry.keys = keys;
+      entry.created = QDateTime::currentMSecsSinceEpoch();
+
+      entry.expires = entry.created + displayDurationMs;
+
+      entry.combination = true;
+      entry.repeatCount = 1;
+      entry.linuxKeyCode = -1;
+
+      visualQueue.append(entry);
+
+      while (visualQueue.size() > 6)
+        visualQueue.removeFirst();
+
+      update();
+
+      return;
+    }
+
+    /*
+     * -----------------------------------------------------------
+     * RUEDA NORMAL
+     * -----------------------------------------------------------
+     */
+
+    addVisualEntry(QStringList{label}, false);
+
+    qDebug() << "KDE KeyCast wheel:" << axisName << axisValue << label
+             << "shift=" << shiftPressed;
+  }
+  void finishCombination() {
+    if (!combinationActive)
+      return;
 
     if (!currentCombinationKey.isEmpty()) {
 
-        if (!currentCombination.contains(
-                currentCombinationKey)) {
+      if (!currentCombination.contains(currentCombinationKey)) {
 
-            currentCombination.append(
-                currentCombinationKey
-            );
-        }
+        currentCombination.append(currentCombinationKey);
+      }
     }
 
     if (currentCombination.size() >= 2) {
 
-        addKeyboardVisualEntry(
-            currentCombination,
-            true
-        );
+      addKeyboardVisualEntry(currentCombination, true);
     }
 
     currentCombination.clear();
     currentCombinationKey.clear();
 
     combinationActive = false;
+  }
+
+  QStringList currentModifierNames() const {
+    QStringList result;
+
+    if (pressedModifiers.contains(QStringLiteral("KEY_LEFTCTRL")) ||
+        pressedModifiers.contains(QStringLiteral("KEY_RIGHTCTRL"))) {
+
+      result.append(QStringLiteral("Ctrl"));
     }
 
-    QStringList currentModifierNames() const
-    {
-        QStringList result;
+    if (pressedModifiers.contains(QStringLiteral("KEY_LEFTALT"))) {
 
-        if (pressedModifiers.contains(
-                QStringLiteral("KEY_LEFTCTRL")) ||
-            pressedModifiers.contains(
-                QStringLiteral("KEY_RIGHTCTRL"))) {
-
-            result.append(
-                QStringLiteral("Ctrl")
-            );
-        }
-
-        if (pressedModifiers.contains(
-                QStringLiteral("KEY_LEFTALT"))) {
-
-            result.append(
-                QStringLiteral("Alt")
-            );
-        }
-
-        if (pressedModifiers.contains(
-                QStringLiteral("KEY_RIGHTALT"))) {
-
-            result.append(
-                QStringLiteral("AltGr")
-            );
-        }
-
-        if (pressedModifiers.contains(
-                QStringLiteral("KEY_LEFTSHIFT")) ||
-            pressedModifiers.contains(
-                QStringLiteral("KEY_RIGHTSHIFT"))) {
-
-            result.append(
-                QStringLiteral("Shift")
-            );
-        }
-
-        if (pressedModifiers.contains(
-                QStringLiteral("KEY_LEFTMETA")) ||
-            pressedModifiers.contains(
-                QStringLiteral("KEY_RIGHTMETA"))) {
-
-            result.append(
-                QStringLiteral("Meta")
-            );
-        }
-
-        return result;
+      result.append(QStringLiteral("Alt"));
     }
 
-    bool hasNonShiftModifier() const
-    {
-        return
-            pressedModifiers.contains(
-                QStringLiteral("KEY_LEFTCTRL")
-            ) ||
-            pressedModifiers.contains(
-                QStringLiteral("KEY_RIGHTCTRL")
-            ) ||
-            pressedModifiers.contains(
-                QStringLiteral("KEY_LEFTALT")
-            ) ||
-            pressedModifiers.contains(
-                QStringLiteral("KEY_RIGHTALT")
-            ) ||
-            pressedModifiers.contains(
-                QStringLiteral("KEY_LEFTMETA")
-            ) ||
-            pressedModifiers.contains(
-                QStringLiteral("KEY_RIGHTMETA")
-            );
+    if (pressedModifiers.contains(QStringLiteral("KEY_RIGHTALT"))) {
+
+      result.append(QStringLiteral("AltGr"));
     }
 
-    bool isShiftOnlyTextKey(
-    const QString &visualName
-) const
-{
+    if (pressedModifiers.contains(QStringLiteral("KEY_LEFTSHIFT")) ||
+        pressedModifiers.contains(QStringLiteral("KEY_RIGHTSHIFT"))) {
+
+      result.append(QStringLiteral("Shift"));
+    }
+
+    if (pressedModifiers.contains(QStringLiteral("KEY_LEFTMETA")) ||
+        pressedModifiers.contains(QStringLiteral("KEY_RIGHTMETA"))) {
+
+      result.append(QStringLiteral("Meta"));
+    }
+
+    return result;
+  }
+
+  bool hasNonShiftModifier() const {
+    return pressedModifiers.contains(QStringLiteral("KEY_LEFTCTRL")) ||
+           pressedModifiers.contains(QStringLiteral("KEY_RIGHTCTRL")) ||
+           pressedModifiers.contains(QStringLiteral("KEY_LEFTALT")) ||
+           pressedModifiers.contains(QStringLiteral("KEY_RIGHTALT")) ||
+           pressedModifiers.contains(QStringLiteral("KEY_LEFTMETA")) ||
+           pressedModifiers.contains(QStringLiteral("KEY_RIGHTMETA"));
+  }
+
+  bool isShiftOnlyTextKey(const QString &visualName) const {
     /*
      * Shift modifica directamente caracteres de texto:
      *
@@ -4057,13 +2828,12 @@ void addKeyboardVisualEntry(
      */
 
     if (visualName.isEmpty())
-        return false;
+      return false;
 
     if (visualName.size() != 1)
-        return false;
+      return false;
 
-    const QChar ch =
-        visualName.at(0);
+    const QChar ch = visualName.at(0);
 
     /*
      * Las flechas y otros símbolos que usamos como representación
@@ -4083,1551 +2853,1094 @@ void addKeyboardVisualEntry(
     case 0x2302: // ⌂
     case 0x232B: // ⌫
     case 0x2326: // ⌦
-        return false;
+      return false;
 
     default:
-        break;
+      break;
     }
 
     return true;
-}
+  }
 
+  void startCombinationIfNeeded() {
+    if (combinationActive)
+      return;
 
-    void startCombinationIfNeeded()
-    {
-        if (combinationActive)
-            return;
+    combinationActive = true;
 
-        combinationActive = true;
+    currentCombination = currentModifierNames();
 
-        currentCombination =
-            currentModifierNames();
+    currentCombinationKey.clear();
+  }
 
-        currentCombinationKey.clear();
-    }
+  /*
+   * ---------------------------------------------------------------
+   * showmethekey-cli
+   * ---------------------------------------------------------------
+   */
+
+  void handleKeyboardInputEvent(const KDEKeyCast::InputEvent &event) {
+    const QString &keyName = event.keyName;
+
+    const int linuxKeyCode = event.linuxCode;
+
+    const bool pressed = event.action == KDEKeyCast::InputAction::Pressed;
+
+    const bool released = event.action == KDEKeyCast::InputAction::Released;
+
+    if (!pressed && !released)
+      return;
+
+    const bool modifier = isModifier(keyName);
 
     /*
-     * ---------------------------------------------------------------
-     * showmethekey-cli
-     * ---------------------------------------------------------------
+     * -----------------------------------------------------------
+     * ATAJOS DE CONFIGURACIÓN
+     * -----------------------------------------------------------
      */
 
+    if (pressed && keyName == QStringLiteral("KEY_M") &&
+        pressedModifiers.contains(QStringLiteral("KEY_LEFTCTRL")) &&
+        pressedModifiers.contains(QStringLiteral("KEY_LEFTSHIFT")) &&
+        pressedModifiers.contains(QStringLiteral("KEY_LEFTALT"))) {
 
-    void handleKeyboardInputEvent(
-        const KDEKeyCast::InputEvent &event)
-    {
-        const QString &keyName =
-            event.keyName;
+      toggleCompactMode();
+    }
 
-        const int linuxKeyCode =
-            event.linuxCode;
+    if (pressed && keyName == QStringLiteral("KEY_H") &&
+        pressedModifiers.contains(QStringLiteral("KEY_LEFTCTRL")) &&
+        pressedModifiers.contains(QStringLiteral("KEY_LEFTSHIFT")) &&
+        pressedModifiers.contains(QStringLiteral("KEY_LEFTALT"))) {
 
-        const bool pressed =
-            event.action ==
-            KDEKeyCast::InputAction::Pressed;
+      toggleHideKeys();
+    }
 
-        const bool released =
-            event.action ==
-            KDEKeyCast::InputAction::Released;
+    if (pressed && keyName == QStringLiteral("KEY_P") &&
+        pressedModifiers.contains(QStringLiteral("KEY_LEFTCTRL")) &&
+        pressedModifiers.contains(QStringLiteral("KEY_LEFTSHIFT")) &&
+        pressedModifiers.contains(QStringLiteral("KEY_LEFTALT"))) {
 
-        if (!pressed && !released)
-            return;
+      togglePauseInput();
+    }
 
-        const bool modifier =
-            isModifier(keyName);
+    if (pressed && keyName == QStringLiteral("KEY_C") &&
+        pressedModifiers.contains(QStringLiteral("KEY_LEFTCTRL")) &&
+        pressedModifiers.contains(QStringLiteral("KEY_LEFTSHIFT")) &&
+        pressedModifiers.contains(QStringLiteral("KEY_LEFTALT"))) {
 
-        /*
-         * -----------------------------------------------------------
-         * ATAJOS DE CONFIGURACIÓN
-         * -----------------------------------------------------------
-         */
+      toggleClickThrough();
+    }
 
-        if (pressed &&
-            keyName == QStringLiteral("KEY_M") &&
-            pressedModifiers.contains(
-                QStringLiteral("KEY_LEFTCTRL")
-            ) &&
-            pressedModifiers.contains(
-                QStringLiteral("KEY_LEFTSHIFT")
-            ) &&
-            pressedModifiers.contains(
-                QStringLiteral("KEY_LEFTALT")
-            )) {
+    const bool shift = keyName == QStringLiteral("KEY_LEFTSHIFT") ||
+                       keyName == QStringLiteral("KEY_RIGHTSHIFT");
 
-            toggleCompactMode();
-        }
+    const bool shiftActive =
+        pressedModifiers.contains(QStringLiteral("KEY_LEFTSHIFT")) ||
+        pressedModifiers.contains(QStringLiteral("KEY_RIGHTSHIFT"));
 
-        if (pressed &&
-            keyName == QStringLiteral("KEY_H") &&
-            pressedModifiers.contains(
-                QStringLiteral("KEY_LEFTCTRL")
-            ) &&
-            pressedModifiers.contains(
-                QStringLiteral("KEY_LEFTSHIFT")
-            ) &&
-            pressedModifiers.contains(
-                QStringLiteral("KEY_LEFTALT")
-            )) {
+    /*
+     * -----------------------------------------------------------
+     * PRESS
+     * -----------------------------------------------------------
+     */
 
-            toggleHideKeys();
-        }
+    if (pressed) {
 
-        if (pressed &&
-            keyName == QStringLiteral("KEY_P") &&
-            pressedModifiers.contains(
-                QStringLiteral("KEY_LEFTCTRL")
-            ) &&
-            pressedModifiers.contains(
-                QStringLiteral("KEY_LEFTSHIFT")
-            ) &&
-            pressedModifiers.contains(
-                QStringLiteral("KEY_LEFTALT")
-            )) {
+      /*
+       * Primero actualizamos XKB.
+       */
+      xkb.updateKey(linuxKeyCode, true);
 
-            togglePauseInput();
-        }
+      /*
+       * -------------------------------------------------------
+       * MODIFICADOR
+       * -------------------------------------------------------
+       */
 
-        if (pressed &&
-            keyName == QStringLiteral("KEY_C") &&
-            pressedModifiers.contains(
-                QStringLiteral("KEY_LEFTCTRL")
-            ) &&
-            pressedModifiers.contains(
-                QStringLiteral("KEY_LEFTSHIFT")
-            ) &&
-            pressedModifiers.contains(
-                QStringLiteral("KEY_LEFTALT")
-            )) {
+      if (modifier) {
 
-            toggleClickThrough();
-        }
-
-        const bool shift =
-            keyName ==
-                QStringLiteral("KEY_LEFTSHIFT") ||
-            keyName ==
-                QStringLiteral("KEY_RIGHTSHIFT");
-
-        const bool shiftActive =
-            pressedModifiers.contains(
-                QStringLiteral("KEY_LEFTSHIFT")
-            ) ||
-            pressedModifiers.contains(
-                QStringLiteral("KEY_RIGHTSHIFT")
-            );
+        pressedModifiers.insert(keyName);
 
         /*
-         * -----------------------------------------------------------
-         * PRESS
-         * -----------------------------------------------------------
+         * Shift por sí solo no genera tarjeta.
          */
+        if (shift && !hasNonShiftModifier()) {
 
-        if (pressed) {
+          update();
+          return;
+        }
 
-            /*
-             * Primero actualizamos XKB.
-             */
-            xkb.updateKey(
-                linuxKeyCode,
-                true
-            );
+        /*
+         * Ctrl / Alt / AltGr / Meta empiezan
+         * una combinación.
+         */
+        if (hasNonShiftModifier()) {
 
-            /*
-             * -------------------------------------------------------
-             * MODIFICADOR
-             * -------------------------------------------------------
-             */
+          startCombinationIfNeeded();
 
-            if (modifier) {
+          currentCombination = currentModifierNames();
 
-                pressedModifiers.insert(
-                    keyName
-                );
+          update();
+          return;
+        }
+      }
 
-                /*
-                 * Shift por sí solo no genera tarjeta.
-                 */
-                if (shift &&
-                    !hasNonShiftModifier()) {
+      /*
+       * -------------------------------------------------------
+       * TECLA NORMAL
+       * -------------------------------------------------------
+       */
 
-                    update();
-                    return;
-                }
+      const QString name = xkbDisplayName(linuxKeyCode, keyName);
 
-                /*
-                 * Ctrl / Alt / AltGr / Meta empiezan
-                 * una combinación.
-                 */
-                if (hasNonShiftModifier()) {
+      QString visualName = name.isEmpty() ? displayName(keyName) : name;
 
-                    startCombinationIfNeeded();
+      /*
+       * -------------------------------------------------------
+       * XKB COMPOSE / DEAD KEYS
+       * -------------------------------------------------------
+       */
 
-                    currentCombination =
-                        currentModifierNames();
+      if (!modifier && !hasNonShiftModifier()) {
 
-                    update();
-                    return;
-                }
-            }
+        if (handleComposeKey(linuxKeyCode, visualName)) {
 
-            /*
-             * -------------------------------------------------------
-             * TECLA NORMAL
-             * -------------------------------------------------------
-             */
+          return;
+        }
+      }
 
-            const QString name =
-                xkbDisplayName(
-                    linuxKeyCode,
-                    keyName
-                );
+      /*
+       * -------------------------------------------------------
+       * SHIFT + TEXTO
+       * -------------------------------------------------------
+       */
 
-            QString visualName =
-                name.isEmpty()
-                    ? displayName(keyName)
-                    : name;
+      if (shift && !hasNonShiftModifier() && isShiftOnlyTextKey(visualName)) {
 
-            /*
-             * -------------------------------------------------------
-             * XKB COMPOSE / DEAD KEYS
-             * -------------------------------------------------------
-             */
+        addKeyboardVisualEntry(QStringList{visualName}, false);
 
-            if (!modifier &&
-                !hasNonShiftModifier()) {
+        return;
+      }
 
-                if (handleComposeKey(
-                        linuxKeyCode,
-                        visualName
-                    )) {
+      /*
+       * -------------------------------------------------------
+       * SHIFT + TECLA ESPECIAL
+       * -------------------------------------------------------
+       */
 
-                    return;
-                }
-            }
+      if (shiftActive && !isShiftOnlyTextKey(visualName)) {
 
-            /*
-             * -------------------------------------------------------
-             * SHIFT + TEXTO
-             * -------------------------------------------------------
-             */
+        startCombinationIfNeeded();
 
-            if (shift &&
-                !hasNonShiftModifier() &&
-                isShiftOnlyTextKey(visualName)) {
+        currentCombination = currentModifierNames();
 
-                addKeyboardVisualEntry(
-                    QStringList{
-                        visualName
-                    },
-                    false
-                );
+        /*
+         * Si Shift es el único modificador,
+         * lo añadimos explícitamente.
+         */
+        if (!hasNonShiftModifier() &&
+            !currentCombination.contains(QStringLiteral("Shift"))) {
 
-                return;
-            }
+          currentCombination.prepend(QStringLiteral("Shift"));
+        }
 
-            /*
-             * -------------------------------------------------------
-             * SHIFT + TECLA ESPECIAL
-             * -------------------------------------------------------
-             */
+        currentCombinationKey = visualName;
 
-            if (shiftActive &&
-                !isShiftOnlyTextKey(visualName)) {
+        if (!currentCombinationKey.isEmpty() &&
+            !currentCombination.contains(currentCombinationKey)) {
 
-                startCombinationIfNeeded();
+          currentCombination.append(currentCombinationKey);
+        }
 
-                currentCombination =
-                    currentModifierNames();
+        update();
+        return;
+      }
 
-                /*
-                 * Si Shift es el único modificador,
-                 * lo añadimos explícitamente.
-                 */
-                if (!hasNonShiftModifier() &&
-                    !currentCombination.contains(
-                        QStringLiteral("Shift")
-                    )) {
+      /*
+       * -------------------------------------------------------
+       * CTRL / ALT / ALTGR / META + TECLA
+       * -------------------------------------------------------
+       */
 
-                    currentCombination.prepend(
-                        QStringLiteral("Shift")
-                    );
-                }
+      if (hasNonShiftModifier()) {
 
-                currentCombinationKey =
-                    visualName;
+        startCombinationIfNeeded();
 
-                if (!currentCombinationKey.isEmpty() &&
-                    !currentCombination.contains(
-                        currentCombinationKey
-                    )) {
+        currentCombinationKey = visualName;
 
-                    currentCombination.append(
-                        currentCombinationKey
-                    );
-                }
+        currentCombination = currentModifierNames();
 
-                update();
-                return;
-            }
+        if (!currentCombinationKey.isEmpty() &&
+            !currentCombination.contains(currentCombinationKey)) {
 
-            /*
-             * -------------------------------------------------------
-             * CTRL / ALT / ALTGR / META + TECLA
-             * -------------------------------------------------------
-             */
+          currentCombination.append(currentCombinationKey);
+        }
 
-            if (hasNonShiftModifier()) {
+        update();
+        return;
+      }
 
-                startCombinationIfNeeded();
+      /*
+       * -------------------------------------------------------
+       * TECLAS CON ESTADO REAL
+       * -------------------------------------------------------
+       */
 
-                currentCombinationKey =
-                    visualName;
+      if (linuxKeyCode == 113 || linuxKeyCode == 114 || linuxKeyCode == 115) {
 
-                currentCombination =
-                    currentModifierNames();
+        updateMediaState();
 
-                if (!currentCombinationKey.isEmpty() &&
-                    !currentCombination.contains(
-                        currentCombinationKey
-                    )) {
+        addVisualEntry(
+            QStringList{
+                realAudioMuted
+                    ? QStringLiteral("🔇 %1%").arg(realAudioVolumePercent)
+                    : QStringLiteral("🔊 %1%").arg(realAudioVolumePercent)},
+            false, linuxKeyCode);
 
-                    currentCombination.append(
-                        currentCombinationKey
-                    );
-                }
+        return;
+      }
 
-                update();
-                return;
-            }
+      if (linuxKeyCode == 248) {
 
-            /*
-             * -------------------------------------------------------
-             * TECLAS CON ESTADO REAL
-             * -------------------------------------------------------
-             */
+        updateMediaState();
 
-            if (linuxKeyCode == 113 ||
-                linuxKeyCode == 114 ||
-                linuxKeyCode == 115) {
+        addVisualEntry(QStringList{realMicMuted ? QStringLiteral("🔇 %1%").arg(
+                                                      realMicVolumePercent)
+                                                : QStringLiteral("🎙 %1%").arg(
+                                                      realMicVolumePercent)},
+                       false, linuxKeyCode);
 
-                updateMediaState();
+        return;
+      }
 
-                addVisualEntry(
-                    QStringList{
-                        realAudioMuted
-                            ? QStringLiteral("🔇 %1%")
-                                  .arg(realAudioVolumePercent)
-                            : QStringLiteral("🔊 %1%")
-                                  .arg(realAudioVolumePercent)
-                    },
-                    false,
-                    linuxKeyCode
-                );
+      if (linuxKeyCode == 164 || linuxKeyCode == 207) {
 
-                return;
-            }
+        updateMediaState();
 
-            if (linuxKeyCode == 248) {
-
-                updateMediaState();
-
-                addVisualEntry(
-                    QStringList{
-                        realMicMuted
-                            ? QStringLiteral("🔇 %1%")
-                                  .arg(realMicVolumePercent)
-                            : QStringLiteral("🎙 %1%")
-                                  .arg(realMicVolumePercent)
-                    },
-                    false,
-                    linuxKeyCode
-                );
-
-                return;
-            }
-
-            if (linuxKeyCode == 164 ||
-                linuxKeyCode == 207) {
-
-                updateMediaState();
-
-                addVisualEntry(
-                    QStringList{
-                        mprisPlaybackStatus ==
-                            QStringLiteral("Playing")
+        addVisualEntry(
+            QStringList{mprisPlaybackStatus == QStringLiteral("Playing")
                             ? QStringLiteral("Ⅱ")
-                            : QStringLiteral("▶")
-                    },
-                    false,
-                    linuxKeyCode
-                );
-
-                return;
-            }
-
-            if (linuxKeyCode == 439) {
-
-                updateMediaState();
-
-                addVisualEntry(
-                    QStringList{
-                        mprisLoopStatus ==
-                            QStringLiteral("Playlist")
-                            ? QStringLiteral("↻∞")
-                            : QStringLiteral("↻")
-                    },
-                    false,
-                    linuxKeyCode
-                );
-
-                return;
-            }
-
-            if (linuxKeyCode == 410) {
-
-                updateMediaState();
-
-                addVisualEntry(
-                    QStringList{
-                        mprisShuffle
-                            ? QStringLiteral("🔀")
-                            : QStringLiteral("⇄")
-                    },
-                    false,
-                    linuxKeyCode
-                );
-
-                return;
-            }
-
-            if (linuxKeyCode == 224 ||
-                linuxKeyCode == 225 ||
-                linuxKeyCode == 243 ||
-                linuxKeyCode == 592 ||
-                linuxKeyCode == 593) {
-
-                updateMediaState();
-
-                addVisualEntry(
-                    QStringList{
-                        QStringLiteral("☀ %1%")
-                            .arg(brightnessPercent)
-                    },
-                    false,
-                    linuxKeyCode
-                );
-
-                return;
-            }
-
-            if (linuxKeyCode == 238) {
-
-                updateMediaState();
-
-                addVisualEntry(
-                    QStringList{
-                        wifiEnabled &&
-                        wifiHardwareEnabled
-                            ? QStringLiteral("📶")
-                            : QStringLiteral("⊘")
-                    },
-                    false,
-                    linuxKeyCode
-                );
-
-                return;
-            }
-
-            if (linuxKeyCode == 246) {
-
-                updateMediaState();
-
-                addVisualEntry(
-                    QStringList{
-                        wwanEnabled &&
-                        wwanHardwareEnabled
-                            ? QStringLiteral("📡")
-                            : QStringLiteral("⊘")
-                    },
-                    false,
-                    linuxKeyCode
-                );
-
-                return;
-            }
-
-            if (linuxKeyCode == 237) {
-
-                updateMediaState();
-
-                addVisualEntry(
-                    QStringList{
-                        bluetoothPowered
-                            ? QStringLiteral("ᛒ")
-                            : QStringLiteral("⊘")
-                    },
-                    false,
-                    linuxKeyCode
-                );
-
-                return;
-            }
-
-            if (linuxKeyCode == 247) {
-
-                updateMediaState();
-
-                addVisualEntry(
-                    QStringList{
-                        allRadiosEnabled
-                            ? QStringLiteral("📡")
-                            : QStringLiteral("⊘")
-                    },
-                    false,
-                    linuxKeyCode
-                );
-
-                return;
-            }
-
-            if (linuxKeyCode == 530 ||
-                linuxKeyCode == 531 ||
-                linuxKeyCode == 532) {
-
-                updateMediaState();
-
-                addVisualEntry(
-                    QStringList{
-                        touchpadEnabled
-                            ? QStringLiteral("⌁")
-                            : QStringLiteral("⊘")
-                    },
-                    false,
-                    linuxKeyCode
-                );
-
-                return;
-            }
-
-            /*
-             * -------------------------------------------------------
-             * TECLA NORMAL SIN MODIFICADORES
-             * -------------------------------------------------------
-             */
-
-            addKeyboardVisualEntry(
-                QStringList{
-                    visualName
-                },
-                false,
-                linuxKeyCode
-            );
-
-            return;
-        }
-
-        /*
-         * -----------------------------------------------------------
-         * RELEASE
-         * -----------------------------------------------------------
-         */
-
-        if (released) {
-
-            /*
-             * -------------------------------------------------------
-             * MODIFICADOR
-             * -------------------------------------------------------
-             */
-
-            if (modifier) {
-
-                /*
-                 * Primero actualizamos XKB.
-                 */
-                xkb.updateKey(
-                    linuxKeyCode,
-                    false
-                );
-
-                /*
-                 * Después retiramos el modificador físico.
-                 */
-                pressedModifiers.remove(
-                    keyName
-                );
-
-                if (keyName ==
-                        QStringLiteral("KEY_LEFTSHIFT") ||
-                    keyName ==
-                        QStringLiteral("KEY_RIGHTSHIFT")) {
-
-                    for (int i =
-                             visualQueue.size() - 1;
-                         i >= 0;
-                         --i) {
-
-                        const VisualEntry &entry =
-                            visualQueue[i];
-
-                        if (!entry.combination ||
-                            entry.keys.size() != 2 ||
-                            entry.keys.at(0) !=
-                                QStringLiteral("Shift")) {
-
-                            continue;
-                        }
-
-                        const QString wheel =
-                            entry.keys.at(1);
-
-                        if (wheel.startsWith(
-                                QStringLiteral("Wheel ")
-                            ) ||
-                            wheel.startsWith(
-                                QStringLiteral("◎")
-                            )) {
-
-                            visualQueue.remove(i);
-                            break;
-                        }
-                    }
-
-                    update();
-                }
-
-                /*
-                 * Si todavía queda algún modificador,
-                 * mantenemos la combinación activa.
-                 */
-                if (combinationActive &&
-                    !pressedModifiers.isEmpty()) {
-
-                    update();
-                    return;
-                }
-
-                /*
-                 * Ya no queda ningún modificador:
-                 * cerramos la combinación.
-                 */
-                if (combinationActive &&
-                    pressedModifiers.isEmpty()) {
-
-                    finishCombination();
-                }
-
-                update();
-                return;
-            }
-
-            /*
-             * -------------------------------------------------------
-             * TECLA NORMAL
-             * -------------------------------------------------------
-             *
-             * No mostramos nada al liberar una tecla.
-             * Actualizamos XKB para mantener el estado correcto.
-             */
-
-            xkb.updateKey(
-                linuxKeyCode,
-                false
-            );
-
-            update();
-            return;
-        }
-    }
-
-
-    void addDisplayDurationAction(QMenu &menu)
-           {
-               auto *action =
-                   new QWidgetAction(&menu);
-
-               auto *container =
-                   new QWidget(&menu);
-
-               auto *layout =
-                   new QHBoxLayout(container);
-
-               layout->setContentsMargins(
-                   10,
-                   2,
-                   10,
-                   2
-               );
-
-               layout->setSpacing(8);
-
-               auto *label =
-                   new QLabel(
-                       tr("Display duration"),
-                       container
-                   );
-
-               auto *slider =
-                   new QSlider(
-                       Qt::Horizontal,
-                       container
-                   );
-
-               auto *valueLabel =
-                   new QLabel(container);
-
-               /*
-                * 5..50 = 0.5..5.0 segundos
-                */
-               slider->setRange(
-                   5,
-                   50
-               );
-
-               slider->setValue(
-                   static_cast<int>(
-                       displayDurationMs / 100
-                   )
-               );
-
-               slider->setFixedWidth(92);
-
-               valueLabel->setFixedWidth(34);
-               valueLabel->setAlignment(
-                   Qt::AlignRight | Qt::AlignVCenter
-               );
-
-               auto updateValue =
-                   [slider, valueLabel]() {
-
-                       const double seconds =
-                           slider->value() / 10.0;
-
-                       valueLabel->setText(
-                           QStringLiteral("%1 s")
-                               .arg(
-                                   seconds,
-                                   0,
-                                   'f',
-                                   1
-                               )
-                       );
-                   };
-
-               updateValue();
-
-               /*
-                * Mismo lenguaje visual que nuestros switches.
-                */
-               const QColor track =
-                   lightMode
-                       ? QColor(205, 208, 213)
-                       : QColor(68, 71, 78);
-
-               const QColor active =
-                   lightMode
-                       ? QColor(70, 72, 78)
-                       : QColor(220, 222, 226);
-
-               const QColor handle =
-                   lightMode
-                       ? QColor(45, 47, 52)
-                       : QColor(245, 246, 248);
-
-               slider->setStyleSheet(
-                   QString(
-                       "QSlider::groove:horizontal {"
-                       " height: 4px;"
-                       " background: %1;"
-                       " border-radius: 2px;"
-                       "}"
-                       "QSlider::sub-page:horizontal {"
-                       " background: %2;"
-                       " border-radius: 2px;"
-                       "}"
-                       "QSlider::add-page:horizontal {"
-                       " background: %1;"
-                       " border-radius: 2px;"
-                       "}"
-                       "QSlider::handle:horizontal {"
-                       " width: 12px;"
-                       " height: 12px;"
-                       " margin: -4px 0;"
-                       " border-radius: 6px;"
-                       " background: %3;"
-                       "}"
-                   ).arg(
-                       track.name(),
-                       active.name(),
-                       handle.name()
-                   )
-               );
-
-               connect(
-                   slider,
-                   &QSlider::valueChanged,
-                   this,
-                   [this, updateValue](int value) {
-
-                       displayDurationMs =
-                           static_cast<qint64>(value) *
-                           100;
-
-                       updateValue();
-
-
-                       settings.setDisplayDurationMs(
-                           displayDurationMs
-                       );
-
-                   }
-               );
-
-               layout->addWidget(label);
-               layout->addWidget(slider);
-               layout->addWidget(valueLabel);
-
-               action->setDefaultWidget(container);
-
-               menu.addAction(action);
-           }
-
-    void toggleAlwaysOnTop()
-    {
-        QDBusMessage message =
-            QDBusMessage::createMethodCall(
-                QStringLiteral("org.kde.kglobalaccel"),
-                QStringLiteral("/component/kwin"),
-                QStringLiteral(
-                    "org.kde.kglobalaccel.Component"
-                ),
-                QStringLiteral("invokeShortcut")
-            );
-
-        message <<
-            QStringLiteral(
-                "kde-keycast-toggle-keep-above"
-            );
-
-        QDBusConnection::sessionBus().asyncCall(
-            message
-        );
-    }
-
-    void toggleCompactMode()
-    {
-        compactMode = !compactMode;
-
-        const int newWidth =
-            compactMode ? 300 : 400;
-
-        const QRect oldGeometry =
-            geometry();
-
-        const int centerX =
-            oldGeometry.left() +
-            oldGeometry.width() / 2;
-
-        setFixedWidth(newWidth);
-
-        move(
-            centerX - newWidth / 2,
-            oldGeometry.top()
-        );
-
-        qDebug()
-            << "KDE KeyCast: compact mode ="
-            << compactMode
-            << "width =" << newWidth;
-
-        update();
-    }
-
-    void toggleLightMode()
-    {
-        lightMode = !lightMode;
-
-        qDebug()
-            << "KDE KeyCast: light mode ="
-            << lightMode;
-
-        updateApplicationIcon();
-
-        update();
-    }
-
-    void toggleHideKeys()
-    {
-        hideKeys = !hideKeys;
-
-        qDebug()
-            << "KDE KeyCast: hide keys ="
-            << hideKeys;
-
-        update();
-    }
-
-    void togglePauseInput()
-    {
-        pauseInput = !pauseInput;
-
-        qDebug()
-            << "KDE KeyCast: pause input ="
-            << pauseInput;
-
-        update();
-    }
-
-    void toggleClickThrough()
-    {
-        clickThrough = !clickThrough;
-
-        if (windowHandle()) {
-            windowHandle()->setFlag(
-                Qt::WindowTransparentForInput,
-                clickThrough
-            );
-        }
-
-        qDebug()
-            << "KDE KeyCast: click-through ="
-            << clickThrough;
-
-        update();
-    }
-
-    void toggleOnlyShortcuts()
-    {
-        onlyShortcuts = !onlyShortcuts;
-
-        /*
-         * Al activar el modo eliminamos inmediatamente
-         * las entradas individuales que ya estén visibles.
-         *
-         * Las combinaciones se conservan.
-         */
-        if (onlyShortcuts) {
-
-            for (int i = visualQueue.size() - 1;
-                 i >= 0;
-                 --i) {
-
-                if (!visualQueue[i].combination)
-                    visualQueue.remove(i);
-            }
-        }
-
-
-        settings.setOnlyShortcuts(
-            onlyShortcuts
-        );
-
-
-        update();
-    }
-
-
-    void showShortcutHelp()
-    {
-        ShortcutHelpDialog dialog(this);
-        dialog.exec();
-    }
-
-
-
-    void showAbout()
-    {
-        AboutDialog dialog(this);
-        dialog.exec();
-    }
-
-    QString userDesktopFilePath() const
-    {
-        const QString applicationsDir =
-            QStandardPaths::writableLocation(
-                QStandardPaths::ApplicationsLocation
-            );
-
-        if (applicationsDir.isEmpty())
-            return {};
-
-        return QDir(applicationsDir).filePath(
-            QStringLiteral("kde-keycast.desktop")
-        );
-    }
-
-    bool ensureUserDesktopFile() const
-    {
-        const QString userPath = userDesktopFilePath();
-
-        if (userPath.isEmpty())
-            return false;
-
-        if (QFile::exists(userPath))
-            return true;
-
-        const QStringList applicationPaths =
-            QStandardPaths::standardLocations(
-                QStandardPaths::ApplicationsLocation
-            );
-
-        QString systemPath;
-
-        for (const QString &path : applicationPaths) {
-
-            const QString candidate =
-                QDir(path).filePath(
-                    QStringLiteral("kde-keycast.desktop")
-                );
-
-            if (candidate == userPath)
-                continue;
-
-            if (QFile::exists(candidate)) {
-                systemPath = candidate;
-                break;
-            }
-        }
-
-        if (systemPath.isEmpty())
-            return false;
-
-        QDir().mkpath(
-            QFileInfo(userPath).absolutePath()
-        );
-
-        QFile source(systemPath);
-
-        if (!source.open(QIODevice::ReadOnly))
-            return false;
-
-        QSaveFile destination(userPath);
-
-        if (!destination.open(QIODevice::WriteOnly))
-            return false;
-
-        const QByteArray data = source.readAll();
-
-        if (destination.write(data) != data.size()) {
-            destination.cancelWriting();
-            return false;
-        }
-
-        return destination.commit();
-    }
-
-    void updateDesktopFileIcon(const QString &iconName)
-    {
-        if (!ensureUserDesktopFile())
-            return;
-
-        const QString desktopFilePath =
-            userDesktopFilePath();
-
-        QFile file(desktopFilePath);
-
-        if (!file.open(QIODevice::ReadOnly | QIODevice::Text))
-            return;
-
-        QString contents =
-            QString::fromUtf8(file.readAll());
-
-        file.close();
-
-        const QString newIconLine =
-            QStringLiteral("Icon=") + iconName;
-
-        QStringList lines =
-            contents.split(QLatin1Char('\n'));
-
-        bool found = false;
-        bool changed = false;
-
-        for (QString &line : lines) {
-
-            if (line.startsWith(QStringLiteral("Icon="))) {
-
-                found = true;
-
-                if (line != newIconLine) {
-                    line = newIconLine;
-                    changed = true;
-                }
-
-                break;
-            }
-        }
-
-        if (!found || !changed)
-            return;
-
-        const QString newContents =
-            lines.join(QLatin1Char('\n'));
-
-        QSaveFile saveFile(desktopFilePath);
-
-        if (!saveFile.open(QIODevice::WriteOnly | QIODevice::Text))
-            return;
-
-        const QByteArray data =
-            newContents.toUtf8();
-
-        if (saveFile.write(data) != data.size()) {
-            saveFile.cancelWriting();
-            return;
-        }
-
-        saveFile.commit();
-    }
-
-    void updateApplicationIcon()
-    {
-        const bool light = lightMode;
-
-        const QString iconName =
-            light
-                ? QStringLiteral("keycast-light")
-                : QStringLiteral("keycast-dark");
-
-        const QIcon icon(
-            light
-                ? QStringLiteral(":/icons/keycast-light.svg")
-                : QStringLiteral(":/icons/keycast-dark.svg")
-        );
-
-        setWindowIcon(icon);
-        QApplication::setWindowIcon(icon);
-
-        updateDesktopFileIcon(iconName);
+                            : QStringLiteral("▶")},
+            false, linuxKeyCode);
+
+        return;
+      }
+
+      if (linuxKeyCode == 439) {
+
+        updateMediaState();
+
+        addVisualEntry(QStringList{mprisLoopStatus == QStringLiteral("Playlist")
+                                       ? QStringLiteral("↻∞")
+                                       : QStringLiteral("↻")},
+                       false, linuxKeyCode);
+
+        return;
+      }
+
+      if (linuxKeyCode == 410) {
+
+        updateMediaState();
+
+        addVisualEntry(QStringList{mprisShuffle ? QStringLiteral("🔀")
+                                                : QStringLiteral("⇄")},
+                       false, linuxKeyCode);
+
+        return;
+      }
+
+      if (linuxKeyCode == 224 || linuxKeyCode == 225 || linuxKeyCode == 243 ||
+          linuxKeyCode == 592 || linuxKeyCode == 593) {
+
+        updateMediaState();
+
+        addVisualEntry(
+            QStringList{QStringLiteral("☀ %1%").arg(brightnessPercent)}, false,
+            linuxKeyCode);
+
+        return;
+      }
+
+      if (linuxKeyCode == 238) {
+
+        updateMediaState();
+
+        addVisualEntry(QStringList{wifiEnabled && wifiHardwareEnabled
+                                       ? QStringLiteral("📶")
+                                       : QStringLiteral("⊘")},
+                       false, linuxKeyCode);
+
+        return;
+      }
+
+      if (linuxKeyCode == 246) {
+
+        updateMediaState();
+
+        addVisualEntry(QStringList{wwanEnabled && wwanHardwareEnabled
+                                       ? QStringLiteral("📡")
+                                       : QStringLiteral("⊘")},
+                       false, linuxKeyCode);
+
+        return;
+      }
+
+      if (linuxKeyCode == 237) {
+
+        updateMediaState();
+
+        addVisualEntry(QStringList{bluetoothPowered ? QStringLiteral("ᛒ")
+                                                    : QStringLiteral("⊘")},
+                       false, linuxKeyCode);
+
+        return;
+      }
+
+      if (linuxKeyCode == 247) {
+
+        updateMediaState();
+
+        addVisualEntry(QStringList{allRadiosEnabled ? QStringLiteral("📡")
+                                                    : QStringLiteral("⊘")},
+                       false, linuxKeyCode);
+
+        return;
+      }
+
+      if (linuxKeyCode == 530 || linuxKeyCode == 531 || linuxKeyCode == 532) {
+
+        updateMediaState();
+
+        addVisualEntry(QStringList{touchpadEnabled ? QStringLiteral("⌁")
+                                                   : QStringLiteral("⊘")},
+                       false, linuxKeyCode);
+
+        return;
+      }
+
+      /*
+       * -------------------------------------------------------
+       * TECLA NORMAL SIN MODIFICADORES
+       * -------------------------------------------------------
+       */
+
+      addKeyboardVisualEntry(QStringList{visualName}, false, linuxKeyCode);
+
+      return;
     }
 
     /*
-     * ---------------------------------------------------------------
-     * Members
-     * ---------------------------------------------------------------
+     * -----------------------------------------------------------
+     * RELEASE
+     * -----------------------------------------------------------
      */
 
-    WaylandConnection waylandConnection;
+    if (released) {
 
-    WaylandKeyboard waylandKeyboard;
-    WaylandPointer waylandPointer;
+      /*
+       * -------------------------------------------------------
+       * MODIFICADOR
+       * -------------------------------------------------------
+       */
 
-    QSocketNotifier *waylandNotifier = nullptr;
+      if (modifier) {
 
-    XkbManager xkb;
+        /*
+         * Primero actualizamos XKB.
+         */
+        xkb.updateKey(linuxKeyCode, false);
 
-    QStringList composeSequence;
-    QVector<QStringList> composeKeyLegends;
+        /*
+         * Después retiramos el modificador físico.
+         */
+        pressedModifiers.remove(keyName);
 
-    KDEKeyCast::ShowMeTheKeyBackend showMeTheKeyBackend;
+        if (keyName == QStringLiteral("KEY_LEFTSHIFT") ||
+            keyName == QStringLiteral("KEY_RIGHTSHIFT")) {
 
-    KDEKeyCast::Settings settings;
+          for (int i = visualQueue.size() - 1; i >= 0; --i) {
 
-    QTimer timer;
+            const VisualEntry &entry = visualQueue[i];
 
-    QVector<VisualEntry> visualQueue;
+            if (!entry.combination || entry.keys.size() != 2 ||
+                entry.keys.at(0) != QStringLiteral("Shift")) {
 
-    bool combinationActive = false;
-    QStringList currentCombination;
-    QString currentCombinationKey;
+              continue;
+            }
 
-    QSet<QString> pressedModifiers;
+            const QString wheel = entry.keys.at(1);
 
+            if (wheel.startsWith(QStringLiteral("Wheel ")) ||
+                wheel.startsWith(QStringLiteral("◎"))) {
 
-    bool compactMode = false;
-    bool alwaysOnTop = true;
-    bool lightMode = false;
-    bool hideKeys = false;
-    bool pauseInput = false;
-    bool clickThrough = false;
-    qint64 displayDurationMs = 1800;
-    bool onlyShortcuts = false;
+              visualQueue.remove(i);
+              break;
+            }
+          }
 
+          update();
+        }
+
+        /*
+         * Si todavía queda algún modificador,
+         * mantenemos la combinación activa.
+         */
+        if (combinationActive && !pressedModifiers.isEmpty()) {
+
+          update();
+          return;
+        }
+
+        /*
+         * Ya no queda ningún modificador:
+         * cerramos la combinación.
+         */
+        if (combinationActive && pressedModifiers.isEmpty()) {
+
+          finishCombination();
+        }
+
+        update();
+        return;
+      }
+
+      /*
+       * -------------------------------------------------------
+       * TECLA NORMAL
+       * -------------------------------------------------------
+       *
+       * No mostramos nada al liberar una tecla.
+       * Actualizamos XKB para mantener el estado correcto.
+       */
+
+      xkb.updateKey(linuxKeyCode, false);
+
+      update();
+      return;
+    }
+  }
+
+  void addDisplayDurationAction(QMenu &menu) {
+    auto *action = new QWidgetAction(&menu);
+
+    auto *container = new QWidget(&menu);
+
+    auto *layout = new QHBoxLayout(container);
+
+    layout->setContentsMargins(10, 2, 10, 2);
+
+    layout->setSpacing(8);
+
+    auto *label = new QLabel(tr("Display duration"), container);
+
+    auto *slider = new QSlider(Qt::Horizontal, container);
+
+    auto *valueLabel = new QLabel(container);
+
+    /*
+     * 5..50 = 0.5..5.0 segundos
+     */
+    slider->setRange(5, 50);
+
+    slider->setValue(static_cast<int>(displayDurationMs / 100));
+
+    slider->setFixedWidth(92);
+
+    valueLabel->setFixedWidth(34);
+    valueLabel->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
+
+    auto updateValue = [slider, valueLabel]() {
+      const double seconds = slider->value() / 10.0;
+
+      valueLabel->setText(QStringLiteral("%1 s").arg(seconds, 0, 'f', 1));
+    };
+
+    updateValue();
+
+    /*
+     * Mismo lenguaje visual que nuestros switches.
+     */
+    const QColor track = lightMode ? QColor(205, 208, 213) : QColor(68, 71, 78);
+
+    const QColor active =
+        lightMode ? QColor(70, 72, 78) : QColor(220, 222, 226);
+
+    const QColor handle =
+        lightMode ? QColor(45, 47, 52) : QColor(245, 246, 248);
+
+    slider->setStyleSheet(QString("QSlider::groove:horizontal {"
+                                  " height: 4px;"
+                                  " background: %1;"
+                                  " border-radius: 2px;"
+                                  "}"
+                                  "QSlider::sub-page:horizontal {"
+                                  " background: %2;"
+                                  " border-radius: 2px;"
+                                  "}"
+                                  "QSlider::add-page:horizontal {"
+                                  " background: %1;"
+                                  " border-radius: 2px;"
+                                  "}"
+                                  "QSlider::handle:horizontal {"
+                                  " width: 12px;"
+                                  " height: 12px;"
+                                  " margin: -4px 0;"
+                                  " border-radius: 6px;"
+                                  " background: %3;"
+                                  "}")
+                              .arg(track.name(), active.name(), handle.name()));
+
+    connect(slider, &QSlider::valueChanged, this,
+            [this, updateValue](int value) {
+              displayDurationMs = static_cast<qint64>(value) * 100;
+
+              updateValue();
+
+              settings.setDisplayDurationMs(displayDurationMs);
+            });
+
+    layout->addWidget(label);
+    layout->addWidget(slider);
+    layout->addWidget(valueLabel);
+
+    action->setDefaultWidget(container);
+
+    menu.addAction(action);
+  }
+
+  void toggleAlwaysOnTop() {
+    QDBusMessage message = QDBusMessage::createMethodCall(
+        QStringLiteral("org.kde.kglobalaccel"),
+        QStringLiteral("/component/kwin"),
+        QStringLiteral("org.kde.kglobalaccel.Component"),
+        QStringLiteral("invokeShortcut"));
+
+    message << QStringLiteral("kde-keycast-toggle-keep-above");
+
+    QDBusConnection::sessionBus().asyncCall(message);
+  }
+
+  void toggleCompactMode() {
+    compactMode = !compactMode;
+
+    const int newWidth = compactMode ? 300 : 400;
+
+    const QRect oldGeometry = geometry();
+
+    const int centerX = oldGeometry.left() + oldGeometry.width() / 2;
+
+    setFixedWidth(newWidth);
+
+    move(centerX - newWidth / 2, oldGeometry.top());
+
+    qDebug() << "KDE KeyCast: compact mode =" << compactMode
+             << "width =" << newWidth;
+
+    update();
+  }
+
+  void toggleLightMode() {
+    lightMode = !lightMode;
+
+    if (KDEKeyCast::MouseEffect::isEnabled()) {
+      KDEKeyCast::MouseEffect::setDarkMode(!lightMode);
+    }
+
+    qDebug() << "KDE KeyCast: light mode =" << lightMode;
+
+    updateApplicationIcon();
+
+    update();
+  }
+
+  void toggleHideKeys() {
+    hideKeys = !hideKeys;
+
+    qDebug() << "KDE KeyCast: hide keys =" << hideKeys;
+
+    update();
+  }
+
+  void togglePauseInput() {
+    pauseInput = !pauseInput;
+
+    qDebug() << "KDE KeyCast: pause input =" << pauseInput;
+
+    update();
+  }
+
+  void toggleClickThrough() {
+    clickThrough = !clickThrough;
+
+    if (windowHandle()) {
+      windowHandle()->setFlag(Qt::WindowTransparentForInput, clickThrough);
+    }
+
+    qDebug() << "KDE KeyCast: click-through =" << clickThrough;
+
+    update();
+  }
+
+  void toggleOnlyShortcuts() {
+    onlyShortcuts = !onlyShortcuts;
+
+    /*
+     * Al activar el modo eliminamos inmediatamente
+     * las entradas individuales que ya estén visibles.
+     *
+     * Las combinaciones se conservan.
+     */
+    if (onlyShortcuts) {
+
+      for (int i = visualQueue.size() - 1; i >= 0; --i) {
+
+        if (!visualQueue[i].combination)
+          visualQueue.remove(i);
+      }
+    }
+
+    settings.setOnlyShortcuts(onlyShortcuts);
+
+    update();
+  }
+
+  void showShortcutHelp() {
+    ShortcutHelpDialog dialog(this);
+    dialog.exec();
+  }
+
+  void showAbout() {
+    AboutDialog dialog(this);
+    dialog.exec();
+  }
+
+  QString userDesktopFilePath() const {
+    const QString applicationsDir =
+        QStandardPaths::writableLocation(QStandardPaths::ApplicationsLocation);
+
+    if (applicationsDir.isEmpty())
+      return {};
+
+    return QDir(applicationsDir)
+        .filePath(QStringLiteral("kde-keycast.desktop"));
+  }
+
+  bool ensureUserDesktopFile() const {
+    const QString userPath = userDesktopFilePath();
+
+    if (userPath.isEmpty())
+      return false;
+
+    if (QFile::exists(userPath))
+      return true;
+
+    const QStringList applicationPaths =
+        QStandardPaths::standardLocations(QStandardPaths::ApplicationsLocation);
+
+    QString systemPath;
+
+    for (const QString &path : applicationPaths) {
+
+      const QString candidate =
+          QDir(path).filePath(QStringLiteral("kde-keycast.desktop"));
+
+      if (candidate == userPath)
+        continue;
+
+      if (QFile::exists(candidate)) {
+        systemPath = candidate;
+        break;
+      }
+    }
+
+    if (systemPath.isEmpty())
+      return false;
+
+    QDir().mkpath(QFileInfo(userPath).absolutePath());
+
+    QFile source(systemPath);
+
+    if (!source.open(QIODevice::ReadOnly))
+      return false;
+
+    QSaveFile destination(userPath);
+
+    if (!destination.open(QIODevice::WriteOnly))
+      return false;
+
+    const QByteArray data = source.readAll();
+
+    if (destination.write(data) != data.size()) {
+      destination.cancelWriting();
+      return false;
+    }
+
+    return destination.commit();
+  }
+
+  void updateDesktopFileIcon(const QString &iconName) {
+    if (!ensureUserDesktopFile())
+      return;
+
+    const QString desktopFilePath = userDesktopFilePath();
+
+    QFile file(desktopFilePath);
+
+    if (!file.open(QIODevice::ReadOnly | QIODevice::Text))
+      return;
+
+    QString contents = QString::fromUtf8(file.readAll());
+
+    file.close();
+
+    const QString newIconLine = QStringLiteral("Icon=") + iconName;
+
+    QStringList lines = contents.split(QLatin1Char('\n'));
+
+    bool found = false;
+    bool changed = false;
+
+    for (QString &line : lines) {
+
+      if (line.startsWith(QStringLiteral("Icon="))) {
+
+        found = true;
+
+        if (line != newIconLine) {
+          line = newIconLine;
+          changed = true;
+        }
+
+        break;
+      }
+    }
+
+    if (!found || !changed)
+      return;
+
+    const QString newContents = lines.join(QLatin1Char('\n'));
+
+    QSaveFile saveFile(desktopFilePath);
+
+    if (!saveFile.open(QIODevice::WriteOnly | QIODevice::Text))
+      return;
+
+    const QByteArray data = newContents.toUtf8();
+
+    if (saveFile.write(data) != data.size()) {
+      saveFile.cancelWriting();
+      return;
+    }
+
+    saveFile.commit();
+  }
+
+  void updateApplicationIcon() {
+    const bool light = lightMode;
+
+    const QString iconName = light ? QStringLiteral("keycast-light")
+                                   : QStringLiteral("keycast-dark");
+
+    const QIcon icon(light ? QStringLiteral(":/icons/keycast-light.svg")
+                           : QStringLiteral(":/icons/keycast-dark.svg"));
+
+    setWindowIcon(icon);
+    QApplication::setWindowIcon(icon);
+
+    updateDesktopFileIcon(iconName);
+  }
+
+  /*
+   * ---------------------------------------------------------------
+   * Members
+   * ---------------------------------------------------------------
+   */
+
+  WaylandConnection waylandConnection;
+
+  WaylandKeyboard waylandKeyboard;
+  WaylandPointer waylandPointer;
+
+  QSocketNotifier *waylandNotifier = nullptr;
+
+  XkbManager xkb;
+
+  QStringList composeSequence;
+  QVector<QStringList> composeKeyLegends;
+
+  KDEKeyCast::ShowMeTheKeyBackend showMeTheKeyBackend;
+
+  KDEKeyCast::Settings settings;
+
+  QTimer timer;
+
+  QVector<VisualEntry> visualQueue;
+
+  bool combinationActive = false;
+  QStringList currentCombination;
+  QString currentCombinationKey;
+
+  QSet<QString> pressedModifiers;
+
+  bool compactMode = false;
+  bool alwaysOnTop = true;
+  bool lightMode = false;
+  bool hideKeys = false;
+  bool pauseInput = false;
+  bool clickThrough = false;
+  qint64 displayDurationMs = 1800;
+  bool onlyShortcuts = false;
 };
 
-class SwitchButton : public QAbstractButton
-{
+class SwitchButton : public QAbstractButton {
 public:
-    explicit SwitchButton(QWidget *parent = nullptr)
-        : QAbstractButton(parent)
-    {
-        setCheckable(true);
-        setCursor(Qt::PointingHandCursor);
-        setFixedSize(38, 22);
-        setFocusPolicy(Qt::NoFocus);
-    }
+  explicit SwitchButton(QWidget *parent = nullptr) : QAbstractButton(parent) {
+    setCheckable(true);
+    setCursor(Qt::PointingHandCursor);
+    setFixedSize(38, 22);
+    setFocusPolicy(Qt::NoFocus);
+  }
 
 protected:
-    void paintEvent(QPaintEvent *) override
-    {
-        QPainter p(this);
+  void paintEvent(QPaintEvent *) override {
+    QPainter p(this);
 
-        p.setRenderHint(
-            QPainter::Antialiasing,
-            true
-        );
+    p.setRenderHint(QPainter::Antialiasing, true);
 
-        /*
-         * -------------------------------------------------------
-         * Track
-         * -------------------------------------------------------
-         */
-        QColor trackColor =
-            isChecked()
-                ? QColor(61, 174, 233)
-                : QColor(110, 114, 121);
+    /*
+     * -------------------------------------------------------
+     * Track
+     * -------------------------------------------------------
+     */
+    QColor trackColor =
+        isChecked() ? QColor(61, 174, 233) : QColor(110, 114, 121);
 
-        if (underMouse()) {
-            trackColor =
-                isChecked()
-                    ? QColor(79, 186, 237)
-                    : QColor(125, 129, 136);
-        }
-
-        const QRectF trackRect(
-            0.5,
-            0.5,
-            width() - 1.0,
-            height() - 1.0
-        );
-
-        p.setPen(Qt::NoPen);
-        p.setBrush(trackColor);
-
-        p.drawRoundedRect(
-            trackRect,
-            height() / 2.0,
-            height() / 2.0
-        );
-
-
-        /*
-         * -------------------------------------------------------
-         * Thumb shadow
-         * -------------------------------------------------------
-         */
-        const qreal thumbSize =
-            height() - 4.0;
-
-        const qreal thumbY =
-            2.0;
-
-        const qreal thumbX =
-            isChecked()
-                ? width() - thumbSize - 2.0
-                : 2.0;
-
-        const QRectF shadowRect(
-            thumbX,
-            thumbY + 1.0,
-            thumbSize,
-            thumbSize
-        );
-
-        p.setBrush(
-            QColor(
-                0,
-                0,
-                0,
-                45
-            )
-        );
-
-        p.drawEllipse(
-            shadowRect
-        );
-
-
-        /*
-         * -------------------------------------------------------
-         * Thumb
-         * -------------------------------------------------------
-         */
-        const QRectF thumbRect(
-            thumbX,
-            thumbY,
-            thumbSize,
-            thumbSize
-        );
-
-        p.setBrush(
-            QColor(
-                255,
-                255,
-                255,
-                255
-            )
-        );
-
-        p.drawEllipse(
-            thumbRect
-        );
+    if (underMouse()) {
+      trackColor = isChecked() ? QColor(79, 186, 237) : QColor(125, 129, 136);
     }
+
+    const QRectF trackRect(0.5, 0.5, width() - 1.0, height() - 1.0);
+
+    p.setPen(Qt::NoPen);
+    p.setBrush(trackColor);
+
+    p.drawRoundedRect(trackRect, height() / 2.0, height() / 2.0);
+
+    /*
+     * -------------------------------------------------------
+     * Thumb shadow
+     * -------------------------------------------------------
+     */
+    const qreal thumbSize = height() - 4.0;
+
+    const qreal thumbY = 2.0;
+
+    const qreal thumbX = isChecked() ? width() - thumbSize - 2.0 : 2.0;
+
+    const QRectF shadowRect(thumbX, thumbY + 1.0, thumbSize, thumbSize);
+
+    p.setBrush(QColor(0, 0, 0, 45));
+
+    p.drawEllipse(shadowRect);
+
+    /*
+     * -------------------------------------------------------
+     * Thumb
+     * -------------------------------------------------------
+     */
+    const QRectF thumbRect(thumbX, thumbY, thumbSize, thumbSize);
+
+    p.setBrush(QColor(255, 255, 255, 255));
+
+    p.drawEllipse(thumbRect);
+  }
 };
 
-static QWidgetAction *addSwitchAction(
-    QMenu &menu,
-    const QString &text,
-    bool checked,
-    const std::function<void(bool)> &onToggled
-)
-{
-    auto *action =
-        new QWidgetAction(&menu);
+static QWidgetAction *
+addSwitchAction(QMenu &menu, const QString &text, bool checked,
+                const std::function<void(bool)> &onToggled) {
+  auto *action = new QWidgetAction(&menu);
 
-    auto *row =
-        new QWidget();
+  auto *row = new QWidget();
 
-    auto *layout =
-        new QHBoxLayout(row);
+  auto *layout = new QHBoxLayout(row);
 
-    layout->setContentsMargins(
-        8,
-        3,
-        8,
-        3
-    );
+  layout->setContentsMargins(8, 3, 8, 3);
 
-    layout->setSpacing(10);
+  layout->setSpacing(10);
 
+  auto *label = new QLabel(text);
 
-    auto *label =
-        new QLabel(text);
+  label->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
 
-    label->setSizePolicy(
-        QSizePolicy::Expanding,
-        QSizePolicy::Preferred
-    );
+  auto *switchButton = new SwitchButton();
 
+  switchButton->setChecked(checked);
 
-    auto *switchButton =
-        new SwitchButton();
+  layout->addWidget(label);
 
-    switchButton->setChecked(
-        checked
-    );
+  layout->addWidget(switchButton);
 
+  QObject::connect(switchButton, &QAbstractButton::toggled, &menu, onToggled);
 
-    layout->addWidget(
-        label
-    );
+  action->setDefaultWidget(row);
 
-    layout->addWidget(
-        switchButton
-    );
+  menu.addAction(action);
 
-
-    QObject::connect(
-        switchButton,
-        &QAbstractButton::toggled,
-        &menu,
-        onToggled
-    );
-
-
-    action->setDefaultWidget(
-        row
-    );
-
-    menu.addAction(
-        action
-    );
-
-    return action;
+  return action;
 }
 
+void KeyCast::contextMenuEvent(QContextMenuEvent *event) {
+  KDEKeyCast::ContextMenuState state;
 
-void KeyCast::contextMenuEvent(
-    QContextMenuEvent *event
-)
-{
-    KDEKeyCast::ContextMenuState state;
+  state.compactMode = compactMode;
 
-    state.compactMode =
-        compactMode;
+  state.lightMode = lightMode;
 
-    state.lightMode =
-        lightMode;
+  state.hideKeys = hideKeys;
 
-    state.hideKeys =
-        hideKeys;
+  state.onlyShortcuts = onlyShortcuts;
 
-    state.onlyShortcuts =
-        onlyShortcuts;
+  state.pauseInput = pauseInput;
 
-    state.pauseInput =
-        pauseInput;
+  state.clickThrough = clickThrough;
 
-    state.clickThrough =
-        clickThrough;
+  state.alwaysOnTop = alwaysOnTop;
 
-    state.alwaysOnTop =
-        alwaysOnTop;
+  state.kwinIntegrationInstalled = KDEKeyCast::KWinIntegration::isInstalled();
 
-    state.kwinIntegrationInstalled =
-        KDEKeyCast::KWinIntegration::isInstalled();
+  state.kwinIntegrationEnabled = KDEKeyCast::KWinIntegration::isEnabled();
 
-    state.kwinIntegrationEnabled =
-        KDEKeyCast::KWinIntegration::isEnabled();
+  state.mouseEffectSupported = KDEKeyCast::MouseEffect::isSupported();
 
-    KDEKeyCast::ContextMenu::Actions actions;
+  state.mouseEffectEnabled =
+      state.mouseEffectSupported && KDEKeyCast::MouseEffect::isEnabled();
 
-    actions.toggleCompactMode =
-        [this]() {
-            toggleCompactMode();
-        };
+  KDEKeyCast::ContextMenu::Actions actions;
 
-    actions.toggleLightMode =
-        [this]() {
-            toggleLightMode();
-        };
+  actions.toggleCompactMode = [this]() { toggleCompactMode(); };
 
-    actions.toggleHideKeys =
-        [this]() {
-            toggleHideKeys();
-        };
+  actions.toggleLightMode = [this]() { toggleLightMode(); };
 
-    actions.toggleOnlyShortcuts =
-        [this]() {
-            toggleOnlyShortcuts();
-        };
+  actions.toggleHideKeys = [this]() { toggleHideKeys(); };
 
-    actions.togglePauseInput =
-        [this]() {
-            togglePauseInput();
-        };
+  actions.toggleOnlyShortcuts = [this]() { toggleOnlyShortcuts(); };
 
-    actions.toggleClickThrough =
-        [this]() {
-            toggleClickThrough();
-        };
+  actions.togglePauseInput = [this]() { togglePauseInput(); };
 
-    actions.toggleAlwaysOnTop =
-        [this]() {
-            toggleAlwaysOnTop();
-        };
+  actions.toggleClickThrough = [this]() { toggleClickThrough(); };
 
-    actions.manageKWinIntegration = [this]() {
-        bool success = false;
+  actions.toggleAlwaysOnTop = [this]() { toggleAlwaysOnTop(); };
 
-        if (!KDEKeyCast::KWinIntegration::isInstalled()) {
-            KDEKeyCast::StatusToast::showInstalling(this);
+  actions.toggleMouseEffect = [this]() {
+    bool success = false;
 
-            QString errorMessage;
+    if (KDEKeyCast::MouseEffect::isEnabled()) {
+      success = KDEKeyCast::MouseEffect::disable();
+    } else {
+      success = KDEKeyCast::MouseEffect::setDarkMode(!lightMode);
 
-            success =
-                KDEKeyCast::KWinIntegration::install(
-                    &errorMessage
-                );
+      if (success) {
+        success = KDEKeyCast::MouseEffect::enable();
+      }
+    }
 
-            if (success) {
-                KDEKeyCast::StatusToast::showInstalled(this);
-            } else {
-                KDEKeyCast::StatusToast::showFailed(
-                    this,
-                    errorMessage
-                );
-            }
+    if (success) {
+      settings.setMouseEffectEnabled(KDEKeyCast::MouseEffect::isEnabled());
+    } else {
+      qWarning() << "KDE KeyCast: could not change mouse effect state";
+    }
+  };
 
-        } else {
-            if (!KDEKeyCast::KWinIntegrationDialog::confirmUninstall(this))
-                return;
+  actions.manageKWinIntegration = [this]() {
+    bool success = false;
 
-            KDEKeyCast::StatusToast::showUninstalling(this);
+    if (!KDEKeyCast::KWinIntegration::isInstalled()) {
+      KDEKeyCast::StatusToast::showInstalling(this);
 
-            success =
-                KDEKeyCast::KWinIntegration::uninstall();
+      QString errorMessage;
 
-            if (success) {
-                KDEKeyCast::StatusToast::showUninstalled(this);
+      success = KDEKeyCast::KWinIntegration::install(&errorMessage);
 
-                KDEKeyCast::Settings settings;
-                settings.setKwinIntegrationPromptDisabled(false);
-            } else {
-                KDEKeyCast::StatusToast::showFailed(
-                    this,
-                    tr("Could not uninstall the integration.")
-                );
-            }
-        }
+      if (success) {
+        KDEKeyCast::StatusToast::showInstalled(this);
+      } else {
+        KDEKeyCast::StatusToast::showFailed(this, errorMessage);
+      }
 
-        if (!success) {
-            KDEKeyCast::KWinIntegrationDialog::showError();
-        }
-    };
+    } else {
+      if (!KDEKeyCast::KWinIntegrationDialog::confirmUninstall(this))
+        return;
 
-    actions.toggleKWinIntegration = [this]() {
-        bool success = false;
+      KDEKeyCast::StatusToast::showUninstalling(this);
 
-        if (KDEKeyCast::KWinIntegration::isEnabled()) {
-            KDEKeyCast::StatusToast::showDisabling(this);
+      success = KDEKeyCast::KWinIntegration::uninstall();
 
-            success =
-                KDEKeyCast::KWinIntegration::disable();
+      if (success) {
+        KDEKeyCast::StatusToast::showUninstalled(this);
 
-            if (success) {
-                KDEKeyCast::StatusToast::showDisabled(this);
-            } else {
-                KDEKeyCast::StatusToast::showFailed(
-                    this,
-                    tr("Could not disable the integration.")
-                );
-            }
-        } else {
-            KDEKeyCast::StatusToast::showEnabling(this);
+        KDEKeyCast::Settings settings;
+        settings.setKwinIntegrationPromptDisabled(false);
+      } else {
+        KDEKeyCast::StatusToast::showFailed(
+            this, tr("Could not uninstall the integration."));
+      }
+    }
 
-            success =
-                KDEKeyCast::KWinIntegration::enable();
+    if (!success) {
+      KDEKeyCast::KWinIntegrationDialog::showError();
+    }
+  };
 
-            if (success) {
-                KDEKeyCast::StatusToast::showEnabled(this);
-            } else {
-                KDEKeyCast::StatusToast::showFailed(
-                    this,
-                    tr("Could not enable the integration.")
-                );
-            }
-        }
+  actions.toggleKWinIntegration = [this]() {
+    bool success = false;
 
-        if (!success) {
-            KDEKeyCast::KWinIntegrationDialog::showError();
-        }
-    };
+    if (KDEKeyCast::KWinIntegration::isEnabled()) {
+      KDEKeyCast::StatusToast::showDisabling(this);
 
-    actions.manageInputPermissions =
-        [this]() {
-            KDEKeyCast::PermissionsDialog dialog(this);
-            dialog.exec();
-        };
+      success = KDEKeyCast::KWinIntegration::disable();
 
-    actions.addDisplayDuration =
-        [this](QMenu &menu) {
-            addDisplayDurationAction(menu);
-        };
+      if (success) {
+        KDEKeyCast::StatusToast::showDisabled(this);
+      } else {
+        KDEKeyCast::StatusToast::showFailed(
+            this, tr("Could not disable the integration."));
+      }
+    } else {
+      KDEKeyCast::StatusToast::showEnabling(this);
 
-    actions.showShortcutHelp =
-        [this]() {
-            showShortcutHelp();
-        };
+      success = KDEKeyCast::KWinIntegration::enable();
 
-    actions.showAbout =
-        [this]() {
-            showAbout();
-        };
+      if (success) {
+        KDEKeyCast::StatusToast::showEnabled(this);
+      } else {
+        KDEKeyCast::StatusToast::showFailed(
+            this, tr("Could not enable the integration."));
+      }
+    }
 
-    actions.quit =
-        []() {
-            QApplication::quit();
-        };
+    if (!success) {
+      KDEKeyCast::KWinIntegrationDialog::showError();
+    }
+  };
 
-    KDEKeyCast::ContextMenu::exec(
-        this,
-        event->globalPos(),
-        state,
-        actions
-    );
+  actions.manageInputPermissions = [this]() {
+    KDEKeyCast::PermissionsDialog dialog(this);
+    dialog.exec();
+  };
+
+  actions.addDisplayDuration = [this](QMenu &menu) {
+    addDisplayDurationAction(menu);
+  };
+
+  actions.showShortcutHelp = [this]() { showShortcutHelp(); };
+
+  actions.showAbout = [this]() { showAbout(); };
+
+  actions.quit = []() { QApplication::quit(); };
+
+  KDEKeyCast::ContextMenu::exec(this, event->globalPos(), state, actions);
 }
-
 
 /*
  * ---------------------------------------------------------------
@@ -5635,87 +3948,65 @@ void KeyCast::contextMenuEvent(
  * ---------------------------------------------------------------
  */
 
-int main(int argc, char **argv)
-{
-    QApplication app(argc, argv);
+int main(int argc, char **argv) {
+  QApplication app(argc, argv);
 
-    QTranslator translator;
+  QTranslator translator;
 
-    const QString installedTranslationsPath =
-        QDir(QCoreApplication::applicationDirPath())
-            .filePath("../share/kde-keycast/translations");
+  const QString installedTranslationsPath =
+      QDir(QCoreApplication::applicationDirPath())
+          .filePath("../share/kde-keycast/translations");
 
-    const QString developmentTranslationsPath =
-        QDir(QCoreApplication::applicationDirPath())
-            .filePath("translations");
+  const QString developmentTranslationsPath =
+      QDir(QCoreApplication::applicationDirPath()).filePath("translations");
 
-    if (translator.load(
-            QLocale::system(),
-            "kde-keycast",
-            "_",
-            installedTranslationsPath
-        ) ||
-        translator.load(
-            QLocale::system(),
-            "kde-keycast",
-            "_",
-            developmentTranslationsPath
-        )) {
-        app.installTranslator(&translator);
-    }
+  if (translator.load(QLocale::system(), "kde-keycast", "_",
+                      installedTranslationsPath) ||
+      translator.load(QLocale::system(), "kde-keycast", "_",
+                      developmentTranslationsPath)) {
+    app.installTranslator(&translator);
+  }
 
-    app.setQuitOnLastWindowClosed(false);
+  app.setQuitOnLastWindowClosed(false);
 
-    app.setApplicationName(
-        QStringLiteral("kde-keycast")
-    );
+  app.setApplicationName(QStringLiteral("kde-keycast"));
 
-    app.setApplicationDisplayName(
-        QStringLiteral("KDE KeyCast")
-    );
+  app.setApplicationDisplayName(QStringLiteral("KDE KeyCast"));
 
-    app.setDesktopFileName(
-        QStringLiteral("kde-keycast")
-    );
+  app.setDesktopFileName(QStringLiteral("kde-keycast"));
 
-    KDEKeyCast::Settings settings;
+  KDEKeyCast::Settings settings;
 
-    KeyCast window;
+  KeyCast window;
 
-    if (!KDEKeyCast::KWinIntegration::isInstalled() &&
-        !settings.kwinIntegrationPromptDisabled()) {
+  if (!KDEKeyCast::KWinIntegration::isInstalled() &&
+      !settings.kwinIntegrationPromptDisabled()) {
 
-        const KDEKeyCast::KWinIntegrationDialog::Result result =
-            KDEKeyCast::KWinIntegrationDialog::askInstall();
+    const KDEKeyCast::KWinIntegrationDialog::Result result =
+        KDEKeyCast::KWinIntegrationDialog::askInstall();
 
-        if (result.install) {
-            KDEKeyCast::StatusToast::showInstalling(&window);
+    if (result.install) {
+      KDEKeyCast::StatusToast::showInstalling(&window);
 
-            QString errorMessage;
+      QString errorMessage;
 
-            const bool success =
-                KDEKeyCast::KWinIntegration::install(
-                    &errorMessage
-                );
+      const bool success = KDEKeyCast::KWinIntegration::install(&errorMessage);
 
-            if (success) {
-                KDEKeyCast::StatusToast::showInstalled(&window);
+      if (success) {
+        KDEKeyCast::StatusToast::showInstalled(&window);
 
-                if (result.dontShowAgain) {
-                    settings.setKwinIntegrationPromptDisabled(true);
-                }
-            } else {
-                KDEKeyCast::StatusToast::showFailed(
-                    &window,
-                    errorMessage
-                );
-            }
-
-        } else if (result.dontShowAgain) {
-            settings.setKwinIntegrationPromptDisabled(true);
+        if (result.dontShowAgain) {
+          settings.setKwinIntegrationPromptDisabled(true);
         }
-    }
+      } else {
+        KDEKeyCast::StatusToast::showFailed(&window, errorMessage);
+      }
 
-    return app.exec();
+    } else if (result.dontShowAgain) {
+      settings.setKwinIntegrationPromptDisabled(true);
+    }
+  }
+
+  return app.exec();
 }
 #include "main.moc"
