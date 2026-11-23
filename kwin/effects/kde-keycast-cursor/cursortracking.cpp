@@ -5,6 +5,7 @@
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
+#include <chrono>
 #include <effect/effect.h>
 #include <effect/effecthandler.h>
 #include <KConfigGroup>
@@ -216,7 +217,12 @@ public:
 
   bool isActive() const override { return true; }
 
+#ifdef KDE_KEYCAST_KWIN_LEGACY_API
+  void prePaintScreen(KWin::ScreenPrePaintData &data,
+                      std::chrono::milliseconds presentTime) override {
+#else
   void prePaintScreen(KWin::ScreenPrePaintData &data) override {
+#endif
     // Registrar el observador cuando InputRedirection esté disponible.
     if (!m_inputSpy) {
       if (KWin::InputRedirection *input = KWin::input()) {
@@ -332,26 +338,43 @@ public:
 
     data.paint += KWin::Rect(m_lastRect);
 
+#ifdef KDE_KEYCAST_KWIN_LEGACY_API
+    KWin::effects->prePaintScreen(data, presentTime);
+#else
     KWin::effects->prePaintScreen(data);
+#endif
   }
 
+#ifdef KDE_KEYCAST_KWIN_LEGACY_API
+#define KDE_KEYCAST_PAINT_RETURN(value) return
+  void paintScreen(const KWin::RenderTarget &renderTarget,
+                   const KWin::RenderViewport &viewport, int mask,
+                   const KWin::Region &region,
+                   KWin::LogicalOutput *screen) override {
+#else
+#define KDE_KEYCAST_PAINT_RETURN(value) return value
   bool paintScreen(const KWin::RenderTarget &renderTarget,
                    const KWin::RenderViewport &viewport, int mask,
                    const KWin::Region &region,
                    KWin::LogicalOutput *screen) override {
+#endif
     static bool logged = false;
     if (!logged) {
       qInfo() << "[CursorTracking] paintScreen ejecutado";
       logged = true;
     }
-    const bool painted = KWin::effects->paintScreen(renderTarget, viewport,
-                                                    mask, region, screen);
+#ifdef KDE_KEYCAST_KWIN_LEGACY_API
+    KWin::effects->paintScreen(renderTarget, viewport, mask, region, screen);
+#else
+    const bool painted = KWin::effects->paintScreen(
+        renderTarget, viewport, mask, region, screen);
 
     if (!painted)
-      return false;
+      KDE_KEYCAST_PAINT_RETURN(false);
+#endif
 
     if (!KWin::effects->isOpenGLCompositing())
-      return true;
+      KDE_KEYCAST_PAINT_RETURN(true);
 
     if (!m_texture || m_textureDirty) {
       m_texture.reset();
@@ -365,7 +388,7 @@ public:
 
       if (!m_texture) {
         qWarning() << "[CursorTracking] No se pudo crear la textura";
-        return true;
+        KDE_KEYCAST_PAINT_RETURN(true);
       }
 
       m_textureDirty = false;
@@ -376,7 +399,7 @@ public:
     KWin::GLShader *shader = binder.shader();
 
     if (!shader)
-      return true;
+      KDE_KEYCAST_PAINT_RETURN(true);
 
     const qreal scale = viewport.scale();
 
@@ -394,8 +417,9 @@ public:
 
     glDisable(GL_BLEND);
 
-    return true;
+    KDE_KEYCAST_PAINT_RETURN(true);
   }
+#undef KDE_KEYCAST_PAINT_RETURN
 
   void postPaintScreen() override {
     static bool logged = false;

@@ -19,7 +19,14 @@ set_property(
     KWIN_EFFECT_FACTORY
 )
 
-target_compile_features(kde-keycast-cursor PRIVATE cxx_std_17)
+target_compile_features(kde-keycast-cursor PRIVATE cxx_std_20)
+
+if(KWin_VERSION VERSION_LESS "6.8")
+    target_compile_definitions(kde-keycast-cursor PRIVATE KDE_KEYCAST_KWIN_LEGACY_API=1)
+    message(STATUS "KWin ${KWin_VERSION}: using legacy cursor effect API")
+else()
+    message(STATUS "KWin ${KWin_VERSION}: using current cursor effect API")
+endif()
 
 target_link_libraries(kde-keycast-cursor
     PRIVATE
