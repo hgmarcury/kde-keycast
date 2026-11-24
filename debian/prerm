@@ -1,0 +1,62 @@
+#!/bin/sh
+set -e
+
+APPIMAGE_DIR="/usr/lib/kde-keycast-appimage"
+APPIMAGE_POLICY="/usr/share/polkit-1/actions/com.github.hgmarcury.kde-keycast-appimage.policy"
+
+
+case "$1" in
+upgrade | deconfigure)
+    exit 0
+    ;;
+remove) ;;
+*)
+    exit 0
+    ;;
+esac
+
+present=0
+valid=0
+
+APPIMAGE_EXECUTABLES="
+$APPIMAGE_DIR/showmethekey-cli
+$APPIMAGE_DIR/configure-kde-keycast-permissions
+$APPIMAGE_DIR/remove-kde-keycast-permissions
+"
+
+APPIMAGE_DATA_FILES="
+$APPIMAGE_DIR/10-com.github.hgmarcury.kde-keycast.rules
+$APPIMAGE_POLICY
+"
+
+for file in $APPIMAGE_EXECUTABLES; do
+    if [ -e "$file" ] || [ -L "$file" ]; then
+        present=$((present + 1))
+        if [ -f "$file" ] && [ ! -L "$file" ] && [ -x "$file" ]; then
+            valid=$((valid + 1))
+        fi
+    fi
+done
+
+for file in $APPIMAGE_DATA_FILES; do
+    if [ -e "$file" ] || [ -L "$file" ]; then
+        present=$((present + 1))
+        if [ -f "$file" ] && [ ! -L "$file" ]; then
+            valid=$((valid + 1))
+        fi
+    fi
+done
+
+if [ "$present" -eq 0 ]; then
+    echo "==> No AppImage installation detected; removing native permissions..."
+    /usr/bin/remove-kde-keycast-permissions --apply
+elif [ "$present" -eq 5 ] && [ "$valid" -eq 5 ]; then
+    echo "==> AppImage installation detected; preserving shared permissions."
+else
+    echo "ERROR: An incomplete or unverified AppImage installation was detected."
+    echo "Shared permissions have been preserved."
+    echo "Resolve the AppImage installation before removing KDE KeyCast DEB."
+    exit 1
+fi
+
+exit 0

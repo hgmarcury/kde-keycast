@@ -1,0 +1,17 @@
+#!/usr/bin/make -f
+
+export DEB_BUILD_MAINT_OPTIONS = hardening=+all
+
+%:
+	dh $@ --buildsystem=cmake
+
+override_dh_auto_configure:
+	dh_auto_configure -- \
+		-DCMAKE_BUILD_TYPE=Release \
+		-DCMAKE_INSTALL_PREFIX=/usr \
+		-DKDE_KEYCAST_REQUIRE_KWIN_EFFECT=ON \
+		-DKDE_INSTALL_USE_QT_SYS_PATHS=ON
+
+override_dh_auto_install:
+	dh_auto_install
+	rm -f debian/kde-keycast/usr/bin/uninstall-kde-keycast

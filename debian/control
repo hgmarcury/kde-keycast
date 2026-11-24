@@ -1,0 +1,34 @@
+Source: kde-keycast
+Section: utils
+Priority: optional
+Maintainer: Marc G. <hgmarcury@gmail.com>
+Build-Depends:
+ debhelper-compat (= 13),
+ cmake,
+ extra-cmake-modules,
+ kwin-dev,
+ qt6-base-dev,
+ qt6-tools-dev,
+ libinput-dev,
+ libudev-dev,
+ libevdev-dev,
+ libxkbcommon-dev,
+ libwayland-dev,
+ pkgconf
+Standards-Version: 4.7.2
+Rules-Requires-Root: no
+
+Package: kde-keycast
+Architecture: any
+Depends:
+ ${shlibs:Depends},
+ ${misc:Depends},
+ pkexec,
+ qdbus-qt6,
+ libkf6config-bin,
+ passwd
+Description: keyboard and mouse visualizer for KDE Plasma
+ KDE KeyCast displays keyboard and mouse input events on screen.
+ .
+ It includes native KWin integration for KDE Plasma on Wayland,
+ with a KWin script and a cursor-tracking effect.

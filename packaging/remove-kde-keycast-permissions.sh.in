@@ -27,6 +27,11 @@ MEMBERS_FILE="$STATE_DIR/members"
 STATUS_MARKER="/var/lib/kde-keycast/permissions-configured"
 USER_DATA_REGISTRY="/var/lib/kde-keycast/appimage-user-data-dir"
 
+IS_APPIMAGE_HELPER=false
+if [[ "$SCRIPT_DIR" == "/usr/lib/kde-keycast-appimage" ]]; then
+    IS_APPIMAGE_HELPER=true
+fi
+
 if [[ "${1:-}" == "--apply" ]]; then
     [[ "$(id -u)" -eq 0 ]] || {
         echo "ERROR: Se necesitan privilegios de administrador."
@@ -81,7 +86,9 @@ if [[ "${1:-}" == "--apply" ]]; then
     validate_state_file "$STATE_DIR/rule-installed" 600
     validate_state_file "$MEMBERS_FILE" 600
     validate_state_file "$STATUS_MARKER" 644
-    validate_state_file "$USER_DATA_REGISTRY" 644
+    if [[ "$IS_APPIMAGE_HELPER" == true ]]; then
+        validate_state_file "$USER_DATA_REGISTRY" 644
+    fi
 
     if [[ -e "$RULE_DEST" || -L "$RULE_DEST" ]]; then
         [[ -f "$RULE_DEST" && ! -L "$RULE_DEST" ]] || {
@@ -283,7 +290,8 @@ if [[ "${1:-}" == "--apply" ]]; then
         exit 1
     fi
 
-    if [[ -e "$USER_DATA_REGISTRY" ]] &&
+    if [[ "$IS_APPIMAGE_HELPER" == true &&
+          -e "$USER_DATA_REGISTRY" ]] &&
         ! rm -f -- "$USER_DATA_REGISTRY"; then
         echo "PENDIENTE: No se pudo retirar el registro del directorio de usuario."
         exit 1
