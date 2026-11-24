@@ -165,39 +165,6 @@ void ContextMenu::exec(QWidget *parent, const QPoint &globalPos,
 
   menu.addSeparator();
 
-  QString kwinIntegrationText;
-
-  if (!state.kwinIntegrationInstalled) {
-    kwinIntegrationText =
-        QCoreApplication::translate("ContextMenu", "Install KWin integration");
-  } else {
-    kwinIntegrationText =
-        QCoreApplication::translate("ContextMenu", "KWin integration ✓");
-  }
-
-  QAction *kwinAction = menu.addAction(kwinIntegrationText);
-
-  QObject::connect(kwinAction, &QAction::triggered, [actions]() {
-    if (actions.manageKWinIntegration)
-      actions.manageKWinIntegration();
-  });
-
-  if (state.kwinIntegrationInstalled) {
-    const QString toggleText =
-        state.kwinIntegrationEnabled
-            ? QCoreApplication::translate("ContextMenu",
-                                          "Disable KWin integration")
-            : QCoreApplication::translate("ContextMenu",
-                                          "Enable KWin integration");
-
-    QAction *toggleKwinAction = menu.addAction(toggleText);
-
-    QObject::connect(toggleKwinAction, &QAction::triggered, [actions]() {
-      if (actions.toggleKWinIntegration)
-        actions.toggleKWinIntegration();
-    });
-  }
-
   QAction *permissionsAction = menu.addAction(
       QCoreApplication::translate("ContextMenu", "Manage input permissions…"));
 

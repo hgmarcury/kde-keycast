@@ -156,51 +156,6 @@
         </message>
     </context>
     <context>
-        <name>KWinIntegration</name>
-        <message>
-            <location filename="../src/kwin/KWinIntegration.cpp" line="197" />
-            <source>Installation timed out.</source>
-            <translation>La instalación ha tardado demasiado.</translation>
-        </message>
-        <message>
-            <location filename="../src/kwin/KWinIntegration.cpp" line="209" />
-            <source>The installer terminated unexpectedly.</source>
-            <translation>El instalador ha terminado de forma inesperada.</translation>
-        </message>
-    </context>
-    <context>
-        <name>KWinIntegrationDialog</name>
-        <message>
-            <location filename="../src/kwin/KWinIntegrationDialog.cpp" line="23" />
-            <source>Do you want to install the KWin integration?</source>
-            <translation>¿Quieres instalar la integración con KWin?</translation>
-        </message>
-        <message>
-            <location filename="../src/kwin/KWinIntegrationDialog.cpp" line="30" />
-            <source>The integration allows KDE KeyCast to manage its window automatically in KDE Plasma.
-
-It can keep the window always on top and remember its position when KDE KeyCast is launched again.</source>
-            <translation>La integración permite que KDE KeyCast gestione automáticamente su ventana en KDE Plasma.
-
-Puede mantenerla siempre visible y recordar su posición cuando vuelvas a iniciar KDE KeyCast.</translation>
-        </message>
-        <message>
-            <location filename="../src/kwin/KWinIntegrationDialog.cpp" line="50" />
-            <source>Do not show again</source>
-            <translation>No volver a mostrar</translation>
-        </message>
-        <message>
-            <location filename="../src/kwin/KWinIntegrationDialog.cpp" line="77" />
-            <source>Do you want to uninstall the KWin integration?</source>
-            <translation>¿Quieres desinstalar la integración con KWin?</translation>
-        </message>
-        <message>
-            <location filename="../src/kwin/KWinIntegrationDialog.cpp" line="94" />
-            <source>Could not modify the KWin integration.</source>
-            <translation>No se ha podido modificar la integración con KWin.</translation>
-        </message>
-    </context>
-    <context>
         <name>KeyCast</name>
         <message>
             <location filename="../main.cpp" line="599" />

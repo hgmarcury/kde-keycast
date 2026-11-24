@@ -47,38 +47,6 @@ fi
 
 echo "==> Uninstalling KDE KeyCast..."
 
-KWIN_UNINSTALLER="$BINDIR/uninstall-kwin-kde-keycast"
-
-if [[ ! -x "$KWIN_UNINSTALLER" ]]; then
-    echo "ERROR: KWin uninstaller is missing:"
-    echo "  $KWIN_UNINSTALLER"
-    echo "No application files or permissions have been removed."
-    exit 1
-fi
-
-if [[ -x "$KWIN_UNINSTALLER" ]]; then
-    echo "==> Removing KDE KeyCast KWin integration..."
-
-    if [[ -n "${SUDO_USER:-}" && "${SUDO_USER}" != "root" ]]; then
-        USER_UID="$(id -u "$SUDO_USER")"
-        USER_RUNTIME_DIR="/run/user/$USER_UID"
-
-        if ! sudo -u "$SUDO_USER" \
-            DBUS_SESSION_BUS_ADDRESS="unix:path=$USER_RUNTIME_DIR/bus" \
-            XDG_RUNTIME_DIR="$USER_RUNTIME_DIR" \
-            "$KWIN_UNINSTALLER" --remove-shared-package; then
-            echo "ERROR: Could not remove the KWin integration."
-            echo "No application files or permissions have been removed."
-            exit 1
-        fi
-    else
-        echo "ERROR: Cannot reliably determine the desktop user."
-        echo "Run this uninstaller with sudo from the desktop user's session."
-        echo "No application files or permissions have been removed."
-        exit 1
-    fi
-fi
-
 PERMISSION_REMOVER="$BINDIR/remove-kde-keycast-permissions"
 
 if [[ ! -x "$PERMISSION_REMOVER" ]]; then
@@ -105,10 +73,90 @@ if [[ -n "$USER_DATA_DIR" ]]; then
         "$USER_DATA_DIR/icons/hicolor/scalable/apps/keycast-dark.svg"
 fi
 
+remove_kde_keycast_kwin_script() {
+    local script_dir="$DATADIR/kwin/scripts/kde-keycast"
+    local metadata="$script_dir/metadata.json"
+
+    if [[ ! -e "$script_dir" && ! -L "$script_dir" ]]; then
+        return 0
+    fi
+
+    if [[ -L "$script_dir" || ! -d "$script_dir" ]]; then
+        echo "WARNING: Invalid KWin script directory."
+        echo "         Leaving it untouched: $script_dir"
+        return 0
+    fi
+
+    if [[ -L "$metadata" || ! -f "$metadata" ]]; then
+        echo "WARNING: KWin script metadata is missing or invalid."
+        echo "         Leaving the directory untouched: $script_dir"
+        return 0
+    fi
+
+    if ! grep -Fq '"KPackageStructure": "KWin/Script"' "$metadata" ||
+       ! grep -Fq '"Id": "kde-keycast"' "$metadata" ||
+       ! grep -Fq '"Name": "KDE KeyCast"' "$metadata"; then
+        echo "WARNING: KWin script metadata does not identify KDE KeyCast."
+        echo "         Leaving the directory untouched: $script_dir"
+        return 0
+    fi
+
+    echo "==> Removing verified KDE KeyCast KWin script..."
+    rm -rf -- "$script_dir"
+}
+
+remove_kde_keycast_cursor_effect() {
+    local plugin="$KWIN_EFFECT_DIR/kde-keycast-cursor.so"
+    local marker="$KWIN_EFFECT_DIR/kde-keycast-cursor.installed"
+    local expected="KDE KeyCast native KWin cursor effect"
+
+    # No ownership marker: never remove an unverified plugin.
+    if [[ ! -e "$marker" && ! -L "$marker" ]]; then
+        if [[ -e "$plugin" || -L "$plugin" ]]; then
+            echo "WARNING: Cursor effect found without an ownership marker."
+            echo "         Leaving it untouched: $plugin"
+        fi
+        return 0
+    fi
+
+    # Reject symbolic links and unexpected marker types.
+    if [[ -L "$marker" || ! -f "$marker" ]]; then
+        echo "WARNING: Invalid cursor effect ownership marker."
+        echo "         Leaving the effect untouched."
+        return 0
+    fi
+
+    if ! grep -Fxq "$expected" "$marker"; then
+        echo "WARNING: Cursor effect ownership marker does not match."
+        echo "         Leaving the effect untouched."
+        return 0
+    fi
+
+    # Never follow or remove a symbolic link in the plugin path.
+    if [[ -L "$plugin" ]]; then
+        echo "WARNING: Cursor effect is a symbolic link."
+        echo "         Leaving it untouched: $plugin"
+        return 0
+    fi
+
+    if [[ -e "$plugin" && ! -f "$plugin" ]]; then
+        echo "WARNING: Cursor effect is not a regular file."
+        echo "         Leaving it untouched: $plugin"
+        return 0
+    fi
+
+    echo "==> Removing verified KDE KeyCast cursor effect..."
+
+    rm -f -- "$plugin" "$marker"
+}
+
+remove_kde_keycast_kwin_script
+
+remove_kde_keycast_cursor_effect
+
 echo "==> Removing KDE KeyCast files..."
 
 rm -f \
-    "$KWIN_EFFECT_DIR/libkde-keycast-cursor.so" \
     "$BINDIR/kde-keycast" \
     "$BINDIR/install-kwin-kde-keycast" \
     "$BINDIR/uninstall-kwin-kde-keycast" \

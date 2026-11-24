@@ -10,7 +10,7 @@
 
 namespace {
 
-const QString effectId = QStringLiteral("libkde-keycast-cursor");
+const QString effectId = QStringLiteral("kde-keycast-cursor");
 
 QString findQdbus() {
   const QString qdbus6 =

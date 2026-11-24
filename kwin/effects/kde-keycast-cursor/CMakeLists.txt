@@ -13,6 +13,10 @@ kcoreaddons_add_plugin(kde-keycast-cursor
         "kwin/effects/plugins"
 )
 
+set_target_properties(kde-keycast-cursor PROPERTIES
+    PREFIX ""
+)
+
 set_property(
     TARGET kde-keycast-cursor
     APPEND PROPERTY AUTOMOC_MACRO_NAMES
@@ -31,4 +35,12 @@ endif()
 target_link_libraries(kde-keycast-cursor
     PRIVATE
         KWin::kwin
+)
+
+# Install ownership marker alongside the cursor effect.
+install(
+    FILES
+        ${CMAKE_CURRENT_SOURCE_DIR}/kde-keycast-cursor.installed
+    DESTINATION
+        "${KDE_INSTALL_PLUGINDIR}/kwin/effects/plugins"
 )

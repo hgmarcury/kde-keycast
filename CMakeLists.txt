@@ -18,26 +18,14 @@ set(CMAKE_MODULE_PATH ${ECM_MODULE_PATH})
 include(KDEInstallDirs)
 
 option(
-    KDE_KEYCAST_INSTALL_KWIN_SCRIPT_GLOBALLY
-    "Install the KWin script in the system-wide KWin scripts directory"
-    OFF
-)
-
-option(
     KDE_KEYCAST_REQUIRE_KWIN_EFFECT
     "Fail configuration if the native KWin cursor effect cannot be built"
     OFF
 )
 
-if(KDE_KEYCAST_INSTALL_KWIN_SCRIPT_GLOBALLY)
-    set(KDE_KEYCAST_KWIN_SCRIPT_INSTALL_DIR
-        "${KDE_INSTALL_DATADIR}/kwin/scripts"
-    )
-else()
-    set(KDE_KEYCAST_KWIN_SCRIPT_INSTALL_DIR
-        "${CMAKE_INSTALL_DATAROOTDIR}/kde-keycast/kwin"
-    )
-endif()
+set(KDE_KEYCAST_KWIN_SCRIPT_INSTALL_DIR
+    "${KDE_INSTALL_DATADIR}/kwin/scripts"
+)
 
 set(KDE_KEYCAST_KWIN_EFFECT_DIR
     "${KDE_INSTALL_FULL_PLUGINDIR}/kwin/effects/plugins"
@@ -153,10 +141,6 @@ add_executable(kde-keycast
     src/ui/ContextMenu.cpp
     src/ui/StatusToast.cpp
 
-    src/kwin/KWinIntegration.h
-    src/kwin/KWinIntegration.cpp
-    src/kwin/KWinIntegrationDialog.h
-    src/kwin/KWinIntegrationDialog.cpp
     src/kwin/MouseEffect.h
     src/kwin/MouseEffect.cpp
 
@@ -218,32 +202,6 @@ file(CHMOD
         WORLD_READ WORLD_EXECUTE
 )
 
-configure_file(
-    ${CMAKE_CURRENT_SOURCE_DIR}/packaging/migrate-appimage-to-native.sh.in
-    ${CMAKE_CURRENT_BINARY_DIR}/migrate-appimage-to-native
-    @ONLY
-)
-
-file(CHMOD
-    ${CMAKE_CURRENT_BINARY_DIR}/migrate-appimage-to-native
-    PERMISSIONS
-        OWNER_READ OWNER_WRITE OWNER_EXECUTE
-        GROUP_READ GROUP_WRITE GROUP_EXECUTE
-        WORLD_READ WORLD_EXECUTE
-)
-
-if(NOT KDE_KEYCAST_INSTALL_KWIN_SCRIPT_GLOBALLY)
-    install(CODE "
-        execute_process(
-            COMMAND \"${CMAKE_CURRENT_BINARY_DIR}/migrate-appimage-to-native\" --prepare
-            RESULT_VARIABLE _kde_keycast_migration_prepare_result
-        )
-        if(NOT \"\${_kde_keycast_migration_prepare_result}\" STREQUAL \"0\")
-            message(FATAL_ERROR \"Migración AppImage → nativa cancelada o preparación fallida.\")
-        endif()
-    ")
-endif()
-
 install(
     PROGRAMS
         ${CMAKE_CURRENT_BINARY_DIR}/configure-kde-keycast-permissions
@@ -304,26 +262,6 @@ install(
     RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
 )
 
-if(NOT KDE_KEYCAST_INSTALL_KWIN_SCRIPT_GLOBALLY)
-    install(
-        PROGRAMS
-            ${CMAKE_CURRENT_SOURCE_DIR}/packaging/install-kwin-kde-keycast.sh
-        DESTINATION
-            ${CMAKE_INSTALL_BINDIR}
-        RENAME
-            install-kwin-kde-keycast
-    )
-
-    install(
-        PROGRAMS
-            ${CMAKE_CURRENT_SOURCE_DIR}/packaging/uninstall-kwin-kde-keycast.sh
-        DESTINATION
-            ${CMAKE_INSTALL_BINDIR}
-        RENAME
-            uninstall-kwin-kde-keycast
-    )
-endif()
-
 install(
     DIRECTORY
         ${CMAKE_CURRENT_SOURCE_DIR}/kwin/kde-keycast
@@ -331,14 +269,12 @@ install(
         ${KDE_KEYCAST_KWIN_SCRIPT_INSTALL_DIR}
 )
 
-if(NOT KDE_KEYCAST_INSTALL_KWIN_SCRIPT_GLOBALLY)
-    install(
-        PROGRAMS
-            ${CMAKE_CURRENT_BINARY_DIR}/uninstall-kde-keycast
-        DESTINATION
-            ${CMAKE_INSTALL_BINDIR}
-    )
-endif()
+install(
+    PROGRAMS
+        ${CMAKE_CURRENT_BINARY_DIR}/uninstall-kde-keycast
+    DESTINATION
+        ${CMAKE_INSTALL_BINDIR}
+)
 
 install(
     TARGETS showmethekey-cli
@@ -378,18 +314,6 @@ install(
     DESTINATION
         ${CMAKE_INSTALL_DATAROOTDIR}/metainfo
 )
-
-if(NOT KDE_KEYCAST_INSTALL_KWIN_SCRIPT_GLOBALLY)
-    install(CODE "
-        execute_process(
-            COMMAND \"${CMAKE_CURRENT_BINARY_DIR}/migrate-appimage-to-native\" --finish
-            RESULT_VARIABLE _kde_keycast_migration_finish_result
-        )
-        if(NOT \"\${_kde_keycast_migration_finish_result}\" STREQUAL \"0\")
-            message(FATAL_ERROR \"No se pudo completar la limpieza de la integración AppImage.\")
-        endif()
-    ")
-endif()
 
 # Qt Linguist translations
 qt6_add_translations(kde-keycast

@@ -11,6 +11,7 @@
         "Icon": "preferences-system-windows",
         "Id": "kde-keycast",
         "Version": "1.0",
+        "EnabledByDefault": true,
         "License": "GPLv3"
     },
     "X-KWin-Config-TranslationDomain": "kde-keycast",

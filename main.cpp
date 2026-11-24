@@ -61,8 +61,6 @@
 #include "src/core/VisualEntry.h"
 #include "src/input/InputEvent.h"
 #include "src/input/ShowMeTheKeyBackend.h"
-#include "src/kwin/KWinIntegration.h"
-#include "src/kwin/KWinIntegrationDialog.h"
 #include "src/kwin/MouseEffect.h"
 #include "src/mouse/WaylandPointer.h"
 #include "src/permissions/PermissionsDialog.h"
@@ -3807,10 +3805,6 @@ void KeyCast::contextMenuEvent(QContextMenuEvent *event) {
 
   state.alwaysOnTop = alwaysOnTop;
 
-  state.kwinIntegrationInstalled = KDEKeyCast::KWinIntegration::isInstalled();
-
-  state.kwinIntegrationEnabled = KDEKeyCast::KWinIntegration::isEnabled();
-
   state.mouseEffectSupported = KDEKeyCast::MouseEffect::isSupported();
 
   state.mouseEffectEnabled =
@@ -3849,78 +3843,6 @@ void KeyCast::contextMenuEvent(QContextMenuEvent *event) {
       settings.setMouseEffectEnabled(KDEKeyCast::MouseEffect::isEnabled());
     } else {
       qWarning() << "KDE KeyCast: could not change mouse effect state";
-    }
-  };
-
-  actions.manageKWinIntegration = [this]() {
-    bool success = false;
-
-    if (!KDEKeyCast::KWinIntegration::isInstalled()) {
-      KDEKeyCast::StatusToast::showInstalling(this);
-
-      QString errorMessage;
-
-      success = KDEKeyCast::KWinIntegration::install(&errorMessage);
-
-      if (success) {
-        KDEKeyCast::StatusToast::showInstalled(this);
-      } else {
-        KDEKeyCast::StatusToast::showFailed(this, errorMessage);
-      }
-
-    } else {
-      if (!KDEKeyCast::KWinIntegrationDialog::confirmUninstall(this))
-        return;
-
-      KDEKeyCast::StatusToast::showUninstalling(this);
-
-      success = KDEKeyCast::KWinIntegration::uninstall();
-
-      if (success) {
-        KDEKeyCast::StatusToast::showUninstalled(this);
-
-        KDEKeyCast::Settings settings;
-        settings.setKwinIntegrationPromptDisabled(false);
-      } else {
-        KDEKeyCast::StatusToast::showFailed(
-            this, tr("Could not uninstall the integration."));
-      }
-    }
-
-    if (!success) {
-      KDEKeyCast::KWinIntegrationDialog::showError();
-    }
-  };
-
-  actions.toggleKWinIntegration = [this]() {
-    bool success = false;
-
-    if (KDEKeyCast::KWinIntegration::isEnabled()) {
-      KDEKeyCast::StatusToast::showDisabling(this);
-
-      success = KDEKeyCast::KWinIntegration::disable();
-
-      if (success) {
-        KDEKeyCast::StatusToast::showDisabled(this);
-      } else {
-        KDEKeyCast::StatusToast::showFailed(
-            this, tr("Could not disable the integration."));
-      }
-    } else {
-      KDEKeyCast::StatusToast::showEnabling(this);
-
-      success = KDEKeyCast::KWinIntegration::enable();
-
-      if (success) {
-        KDEKeyCast::StatusToast::showEnabled(this);
-      } else {
-        KDEKeyCast::StatusToast::showFailed(
-            this, tr("Could not enable the integration."));
-      }
-    }
-
-    if (!success) {
-      KDEKeyCast::KWinIntegrationDialog::showError();
     }
   };
 
@@ -3978,34 +3900,6 @@ int main(int argc, char **argv) {
   KDEKeyCast::Settings settings;
 
   KeyCast window;
-
-  if (!KDEKeyCast::KWinIntegration::isInstalled() &&
-      !settings.kwinIntegrationPromptDisabled()) {
-
-    const KDEKeyCast::KWinIntegrationDialog::Result result =
-        KDEKeyCast::KWinIntegrationDialog::askInstall();
-
-    if (result.install) {
-      KDEKeyCast::StatusToast::showInstalling(&window);
-
-      QString errorMessage;
-
-      const bool success = KDEKeyCast::KWinIntegration::install(&errorMessage);
-
-      if (success) {
-        KDEKeyCast::StatusToast::showInstalled(&window);
-
-        if (result.dontShowAgain) {
-          settings.setKwinIntegrationPromptDisabled(true);
-        }
-      } else {
-        KDEKeyCast::StatusToast::showFailed(&window, errorMessage);
-      }
-
-    } else if (result.dontShowAgain) {
-      settings.setKwinIntegrationPromptDisabled(true);
-    }
-  }
 
   return app.exec();
 }
