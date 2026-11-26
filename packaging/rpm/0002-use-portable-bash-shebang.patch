@@ -1,0 +1,20 @@
+diff --git a/packaging/configure-kde-keycast-permissions.sh.in b/packaging/configure-kde-keycast-permissions.sh.in
+index ecd0dec..d0bcf1b 100644
+--- a/packaging/configure-kde-keycast-permissions.sh.in
++++ b/packaging/configure-kde-keycast-permissions.sh.in
+@@ -1,4 +1,4 @@
+-#!/usr/bin/env bash
++#!/bin/bash
+ # SPDX-FileCopyrightText: 2026 Marc G.
+ # SPDX-License-Identifier: GPL-3.0-or-later
+ 
+diff --git a/packaging/remove-kde-keycast-permissions.sh.in b/packaging/remove-kde-keycast-permissions.sh.in
+index bde6492..ece4187 100644
+--- a/packaging/remove-kde-keycast-permissions.sh.in
++++ b/packaging/remove-kde-keycast-permissions.sh.in
+@@ -1,4 +1,4 @@
+-#!/usr/bin/env bash
++#!/bin/bash
+ # SPDX-FileCopyrightText: 2026 Marc G.
+ # SPDX-License-Identifier: GPL-3.0-or-later
+ 

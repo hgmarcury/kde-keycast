@@ -1,0 +1,14 @@
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -153,6 +153,11 @@
+ )
+ 
+ 
++target_compile_options(kde-keycast PRIVATE -fPIE)
++target_compile_options(showmethekey-cli PRIVATE -fPIE)
++target_link_options(kde-keycast PRIVATE -pie)
++target_link_options(showmethekey-cli PRIVATE -pie)
++
+ target_include_directories(showmethekey-cli PRIVATE
+     ${LIBINPUT_INCLUDE_DIR}
+     ${LIBUDEV_INCLUDE_DIR}
