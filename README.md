@@ -389,7 +389,8 @@ sudo cmake --install build
 KDE KeyCast has currently been tested successfully on:
 
 - **KDE neon** — KDE Plasma on Wayland
-- **Kubuntu 26.04.1 LTS** — KDE Plasma 6.6.6 on Wayland
+- **Kubuntu 26.04.1 LTS** — KDE Plasma 6.6.6 on Wayland (DEB package)
+- **openSUSE Tumbleweed** — KDE Plasma on Wayland (RPM package)
 - **Fedora 44 KDE** — KDE Plasma 6.7.5 on Wayland
 - **EndeavourOS KDE** — KDE Plasma on Wayland
 
