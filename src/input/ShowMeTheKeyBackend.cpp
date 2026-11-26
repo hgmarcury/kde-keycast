@@ -71,9 +71,8 @@ bool ShowMeTheKeyBackend::start(EventHandler handler) {
   const QString libexecDir = QStringLiteral(KDE_KEYCAST_LIBEXECDIR);
 
   const QString installedBackend =
-      QDir(applicationDir)
-          .absoluteFilePath(QStringLiteral("../%1/kde-keycast/showmethekey-cli")
-                                .arg(libexecDir));
+      QDir(libexecDir).absoluteFilePath(
+          QStringLiteral("kde-keycast/showmethekey-cli"));
 
   const bool isAppImage = qEnvironmentVariableIsSet("APPIMAGE");
 

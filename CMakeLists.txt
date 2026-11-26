@@ -231,7 +231,7 @@ install(
 )
 
 target_compile_definitions(kde-keycast PRIVATE
-    KDE_KEYCAST_LIBEXECDIR="${KDE_INSTALL_LIBEXECDIR}"
+    KDE_KEYCAST_LIBEXECDIR="${KDE_INSTALL_FULL_LIBEXECDIR}"
 )
 
 target_include_directories(kde-keycast PRIVATE
