@@ -1,6 +1,6 @@
 Name:           kde-keycast
 Version:        1.1.0
-%global commit 01d247b
+%global commit 01d247b3501170cf9b5126225a797d30c798d012
 Release:        1%{?dist}
 Summary:        Keyboard and mouse visualizer for KDE Plasma
 License:        GPL-3.0-or-later AND Apache-2.0
