@@ -56,12 +56,15 @@ printf '%s\n' "$sessions" | while read -r session rest; do
         *) continue ;;
     esac
 
+    session_name=$(getent passwd "$session_user" | "$SED" -n 's/:.*//p')
+    [ -n "$session_name" ] || continue
+
     runtime_dir="/run/user/$session_user"
     [ -S "$runtime_dir/bus" ] || continue
 
-    echo "==> Requesting KWin reconfiguration for session $session (UID $session_user)..."
+    echo "==> Requesting KWin reconfiguration for session $session (user $session_name, UID $session_user)..."
 
-    if "$RUNUSER" -u "$session_user" -- "$ENV" \
+    if "$RUNUSER" -u "$session_name" -- "$ENV" \
         LC_ALL=C.UTF-8 \
         XDG_RUNTIME_DIR="$runtime_dir" \
         DBUS_SESSION_BUS_ADDRESS="unix:path=$runtime_dir/bus" \
