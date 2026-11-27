@@ -1,7 +1,7 @@
 
 Name:           kde-keycast
 Version:        1.1.0
-%global commit 39bff0ff8e34fa076295f653035bc9cef81b4368
+%global commit 212d952
 Release:        1
 Summary:        Keyboard and mouse visualizer for KDE Plasma
 License:        GPL-3.0-or-later AND Apache-2.0
@@ -63,50 +63,7 @@ install -m 644 vendor/showmethekey-cli/LICENSE \
 rm -f %{buildroot}%{_bindir}/uninstall-kde-keycast
 
 %post
-sessions=$(/usr/bin/loginctl list-sessions --no-legend 2>/dev/null) || sessions=
-
-printf '%s\n' "$sessions" | while read -r session rest; do
-    [ -n "$session" ] || continue
-
-    properties=$(/usr/bin/loginctl show-session "$session" \
-        -p User -p Desktop -p Type -p Active -p State 2>/dev/null) || continue
-
-    session_user=$(printf '%s\n' "$properties" | /usr/bin/sed -n 's/^User=//p')
-    session_desktop=$(printf '%s\n' "$properties" | /usr/bin/sed -n 's/^Desktop=//p')
-    session_type=$(printf '%s\n' "$properties" | /usr/bin/sed -n 's/^Type=//p')
-    session_active=$(printf '%s\n' "$properties" | /usr/bin/sed -n 's/^Active=//p')
-    session_state=$(printf '%s\n' "$properties" | /usr/bin/sed -n 's/^State=//p')
-
-    case "$session_user" in
-        ''|*[!0-9]*) continue ;;
-    esac
-
-    [ "$session_desktop" = "KDE" ] || continue
-    [ "$session_active" = "yes" ] || continue
-    [ "$session_state" = "active" ] || continue
-
-    case "$session_type" in
-        wayland|x11) ;;
-        *) continue ;;
-    esac
-
-    runtime_dir="/run/user/$session_user"
-    [ -S "$runtime_dir/bus" ] || continue
-
-    echo "==> Requesting KWin reconfiguration for session $session (UID $session_user)..."
-
-    if /usr/sbin/runuser -u "$session_user" -- /usr/bin/env \
-        LC_ALL=C.UTF-8 \
-        XDG_RUNTIME_DIR="$runtime_dir" \
-        DBUS_SESSION_BUS_ADDRESS="unix:path=$runtime_dir/bus" \
-        /usr/bin/qdbus6 org.kde.KWin /KWin reconfigure; then
-        echo "==> KWin reconfiguration requested successfully."
-    else
-        echo "WARNING: Could not reconfigure KWin in session $session."
-    fi
-done
-
-:
+/usr/bin/reconfigure-kde-keycast || :
 
 %preun
 if [ "$1" -eq 0 ]; then
@@ -179,6 +136,7 @@ fi
 %{_bindir}/kde-keycast
 %{_bindir}/configure-kde-keycast-permissions
 %{_bindir}/remove-kde-keycast-permissions
+%{_bindir}/reconfigure-kde-keycast
 
 %{_libexecdir}/kde-keycast/showmethekey-cli
 
