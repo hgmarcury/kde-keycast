@@ -328,3 +328,41 @@ install(
     FILES ${KDE_KEYCAST_QM_FILES}
     DESTINATION ${CMAKE_INSTALL_DATAROOTDIR}/kde-keycast/translations
 )
+
+
+# KWin session reconfiguration helper
+configure_file(
+    ${CMAKE_CURRENT_SOURCE_DIR}/packaging/reconfigure-kde-keycast.sh.in
+    ${CMAKE_CURRENT_BINARY_DIR}/reconfigure-kde-keycast
+    @ONLY
+)
+
+file(CHMOD
+    ${CMAKE_CURRENT_BINARY_DIR}/reconfigure-kde-keycast
+    PERMISSIONS
+        OWNER_READ OWNER_WRITE OWNER_EXECUTE
+        GROUP_READ GROUP_EXECUTE
+        WORLD_READ WORLD_EXECUTE
+)
+
+install(
+    PROGRAMS
+        ${CMAKE_CURRENT_BINARY_DIR}/reconfigure-kde-keycast
+    DESTINATION
+        ${CMAKE_INSTALL_BINDIR}
+)
+
+# Reconfigure active KWin sessions after a native installation.
+# Skip this step when installing into a staging directory (DESTDIR).
+install(CODE "
+if(\"\$ENV{DESTDIR}\" STREQUAL \"\")
+    message(STATUS \"Requesting KWin reconfiguration...\")
+    execute_process(
+        COMMAND \"${CMAKE_INSTALL_FULL_BINDIR}/reconfigure-kde-keycast\"
+        RESULT_VARIABLE KDE_KEYCAST_RECONFIGURE_RESULT
+    )
+    if(NOT KDE_KEYCAST_RECONFIGURE_RESULT EQUAL 0)
+        message(WARNING \"KWin reconfiguration helper returned an error.\")
+    endif()
+endif()
+")

@@ -1,0 +1,75 @@
+#!/usr/bin/env bash
+
+# Reconfigure KWin in active KDE sessions after installing KDE KeyCast.
+
+LOGINCTL="/usr/bin/loginctl"
+SED="/usr/bin/sed"
+ENV="/usr/bin/env"
+
+if [ ! -x "$LOGINCTL" ]; then
+    echo "WARNING: loginctl is unavailable; skipping KWin reconfiguration."
+    exit 0
+fi
+
+RUNUSER=$(command -v runuser 2>/dev/null) || {
+    echo "WARNING: runuser is unavailable; skipping KWin reconfiguration."
+    exit 0
+}
+
+QDBUS=""
+for candidate in /usr/bin/qdbus6 /usr/bin/qdbus-qt6; do
+    if [ -x "$candidate" ]; then
+        QDBUS="$candidate"
+        break
+    fi
+done
+
+if [ -z "$QDBUS" ]; then
+    echo "WARNING: Qt D-Bus command not found; skipping KWin reconfiguration."
+    exit 0
+fi
+
+sessions=$("$LOGINCTL" list-sessions --no-legend 2>/dev/null) || sessions=
+
+printf '%s\n' "$sessions" | while read -r session rest; do
+    [ -n "$session" ] || continue
+
+    properties=$("$LOGINCTL" show-session "$session" \
+        -p User -p Desktop -p Type -p Active -p State 2>/dev/null) || continue
+
+    session_user=$(printf '%s\n' "$properties" | "$SED" -n 's/^User=//p')
+    session_desktop=$(printf '%s\n' "$properties" | "$SED" -n 's/^Desktop=//p')
+    session_type=$(printf '%s\n' "$properties" | "$SED" -n 's/^Type=//p')
+    session_active=$(printf '%s\n' "$properties" | "$SED" -n 's/^Active=//p')
+    session_state=$(printf '%s\n' "$properties" | "$SED" -n 's/^State=//p')
+
+    case "$session_user" in
+        ''|*[!0-9]*) continue ;;
+    esac
+
+    [ "$session_desktop" = "KDE" ] || continue
+    [ "$session_active" = "yes" ] || continue
+    [ "$session_state" = "active" ] || continue
+
+    case "$session_type" in
+        wayland|x11) ;;
+        *) continue ;;
+    esac
+
+    runtime_dir="/run/user/$session_user"
+    [ -S "$runtime_dir/bus" ] || continue
+
+    echo "==> Requesting KWin reconfiguration for session $session (UID $session_user)..."
+
+    if "$RUNUSER" -u "$session_user" -- "$ENV" \
+        LC_ALL=C.UTF-8 \
+        XDG_RUNTIME_DIR="$runtime_dir" \
+        DBUS_SESSION_BUS_ADDRESS="unix:path=$runtime_dir/bus" \
+        "$QDBUS" org.kde.KWin /KWin reconfigure; then
+        echo "==> KWin reconfiguration requested successfully."
+    else
+        echo "WARNING: Could not reconfigure KWin in session $session."
+    fi
+done
+
+exit 0
